@@ -104,6 +104,15 @@ function createWindow() {
     mainWindow.show();
   });
 
+  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    const prefix = ["log", "warn", "error", "debug"][level] ?? "console";
+    console.log(`[renderer:${prefix}] ${message} (${sourceId}:${line})`);
+  });
+
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[renderer:load-failed] ${errorCode} ${errorDescription} ${validatedURL}`);
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url)) {
       shell.openExternal(url);
