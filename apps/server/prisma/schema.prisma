@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String
+  email        String    @unique
+  handle       String?   @unique
+  avatarUrl    String?
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  sentMessages Message[] @relation("SentMessages")
+  received     Message[] @relation("ReceivedMessages")
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  senderId   String
+  receiverId String
+  text       String
+  attachmentUrl  String?
+  attachmentName String?
+  attachmentMime String?
+  attachmentSize Int?
+  sentAt     DateTime @default(now())
+  deliveredAt DateTime?
+  readAt     DateTime?
+  editedAt   DateTime?
+  isPinned   Boolean  @default(false)
+  hiddenForSender   Boolean @default(false)
+  hiddenForReceiver Boolean @default(false)
+  isRead     Boolean  @default(false)
+  sender     User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, receiverId, sentAt])
+  @@index([receiverId, senderId, sentAt])
+}

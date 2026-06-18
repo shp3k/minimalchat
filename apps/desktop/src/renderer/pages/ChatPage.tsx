@@ -1,0 +1,502 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { MessageDTO, OnlineUsersDTO, UserDTO, UserListItemDTO } from "@minimalchat/shared";
+import { AnimatePresence, motion } from "motion/react";
+import { Wifi, WifiOff } from "lucide-react";
+import { ChatInput } from "@/components/ChatInput";
+import { EmptyChatState } from "@/components/EmptyChatState";
+import { ImageViewer } from "@/components/ImageViewer";
+import { MessageList } from "@/components/MessageList";
+import { ProfileModal } from "@/components/ProfileModal";
+import { SettingsModal } from "@/components/SettingsModal";
+import { Sidebar } from "@/components/Sidebar";
+import { UserList } from "@/components/UserList";
+import { Avatar } from "@/components/ui/avatar";
+import { api } from "@/lib/api";
+import type { Language } from "@/lib/i18n";
+import { getTranslation, translateError } from "@/lib/i18n";
+import { clearStoredUser } from "@/lib/storage";
+import { createChatSocket, sendSocketMessage, type ChatSocket } from "@/lib/socket";
+
+interface ChatPageProps {
+  user: UserDTO;
+  language: Language;
+  onUserUpdate: (user: UserDTO) => void;
+  onLanguageChange: (language: Language) => void;
+  onLogout: () => void;
+}
+
+export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLogout }: ChatPageProps) {
+  const [users, setUsers] = useState<UserListItemDTO[]>([]);
+  const [selectedUser, setSelectedUser] = useState<UserListItemDTO | null>(null);
+  const [messages, setMessages] = useState<MessageDTO[]>([]);
+  const [query, setQuery] = useState("");
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [imagePreview, setImagePreview] = useState<{ url: string; name: string } | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [pinnedCursor, setPinnedCursor] = useState(0);
+  const [socket, setSocket] = useState<ChatSocket | null>(null);
+  const [connected, setConnected] = useState(false);
+  const [error, setError] = useState("");
+  const selectedUserRef = useRef<UserListItemDTO | null>(null);
+  const t = getTranslation(language);
+
+  useEffect(() => {
+    selectedUserRef.current = selectedUser;
+  }, [selectedUser]);
+
+  useEffect(() => {
+    setPinnedCursor(0);
+  }, [selectedUser?.id]);
+
+  useEffect(() => {
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+
+      if (imagePreview) {
+        event.preventDefault();
+        setImagePreview(null);
+        return;
+      }
+
+      if (settingsOpen) {
+        event.preventDefault();
+        setSettingsOpen(false);
+        return;
+      }
+
+      if (profileOpen) {
+        event.preventDefault();
+        setProfileOpen(false);
+        return;
+      }
+
+      if (selectedUser) {
+        event.preventDefault();
+        setSelectedUser(null);
+        setMessages([]);
+      }
+    }
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [imagePreview, profileOpen, selectedUser, settingsOpen]);
+
+  useEffect(() => {
+    const chatSocket = createChatSocket(user.id);
+    setSocket(chatSocket);
+
+    chatSocket.on("connect", () => setConnected(true));
+    chatSocket.on("disconnect", () => setConnected(false));
+    chatSocket.on("message:receive", (message: MessageDTO) => {
+      const activeUser = selectedUserRef.current;
+      const belongsToSelected =
+        activeUser &&
+        ((message.senderId === user.id && message.receiverId === activeUser.id) ||
+          (message.senderId === activeUser.id && message.receiverId === user.id));
+
+      setMessages((current) => {
+        if (!belongsToSelected || current.some((item) => item.id === message.id)) {
+          return current;
+        }
+
+        return [...current, message];
+      });
+      if (activeUser && belongsToSelected && message.senderId === activeUser.id && message.receiverId === user.id) {
+        void markConversationRead(activeUser.id);
+      }
+      setUsers((current) => {
+        const nextUsers = bumpUserWithMessage(current, message, user.id, activeUser?.id ?? null);
+        if (nextUsers === current && message.receiverId === user.id) {
+          void loadUsers();
+        }
+        return nextUsers;
+      });
+    });
+    chatSocket.on("message:update", (message: MessageDTO) => {
+      setMessages((current) => current.map((item) => (item.id === message.id ? message : item)));
+      setUsers((current) =>
+        current.map((item) =>
+          item.lastMessage?.id === message.id
+            ? {
+                ...item,
+                lastMessage: message
+              }
+            : item
+        )
+      );
+    });
+    chatSocket.on("message:delete", (payload: { id: string }) => {
+      setMessages((current) => current.filter((item) => item.id !== payload.id));
+      setUsers((current) =>
+        current.map((item) => (item.lastMessage?.id === payload.id ? { ...item, lastMessage: null } : item))
+      );
+      void loadUsers();
+    });
+
+    const setOnline = (payload: OnlineUsersDTO) => {
+      setUsers((current) =>
+        current.map((item) => (payload.userIds.includes(item.id) ? { ...item, online: true } : item))
+      );
+      setSelectedUser((current) =>
+        current && payload.userIds.includes(current.id) ? { ...current, online: true } : current
+      );
+    };
+    const setOffline = (payload: OnlineUsersDTO) => {
+      setUsers((current) =>
+        current.map((item) => (payload.userIds.includes(item.id) ? { ...item, online: false } : item))
+      );
+      setSelectedUser((current) =>
+        current && payload.userIds.includes(current.id) ? { ...current, online: false } : current
+      );
+    };
+
+    chatSocket.on("user:online", setOnline);
+    chatSocket.on("user:offline", setOffline);
+
+    return () => {
+      chatSocket.emit("user:disconnect");
+      chatSocket.disconnect();
+    };
+  }, [user.id]);
+
+  useEffect(() => {
+    const value = query.trim();
+
+    if (!value) {
+      void loadUsers();
+      return;
+    }
+
+    if (!value.startsWith("@")) {
+      setUsers([]);
+      setUsersLoading(false);
+      return;
+    }
+
+    setUsersLoading(true);
+    const timeout = window.setTimeout(() => {
+      void searchUsers(value);
+    }, 220);
+
+    return () => window.clearTimeout(timeout);
+  }, [query, user.id]);
+
+  async function loadUsers() {
+    setUsersLoading(true);
+    setError("");
+    try {
+      const result = await api.users(user.id);
+      setUsers(result.users);
+      if (selectedUser) {
+        const freshSelected = result.users.find((item) => item.id === selectedUser.id);
+        setSelectedUser(freshSelected ?? null);
+      }
+    } catch (caught) {
+      setError(translateError(caught, t));
+    } finally {
+      setUsersLoading(false);
+    }
+  }
+
+  async function markConversationRead(otherUserId: string) {
+    try {
+      const result = await api.markMessagesRead(user.id, otherUserId);
+
+      if (!result.messages.length) return;
+
+      setMessages((current) =>
+        current.map((message) => result.messages.find((updated) => updated.id === message.id) ?? message)
+      );
+      setUsers((current) =>
+        current.map((item) => {
+          const updatedLastMessage = item.lastMessage
+            ? result.messages.find((message) => message.id === item.lastMessage?.id)
+            : null;
+
+          if (item.id !== otherUserId) return item;
+
+          return {
+            ...item,
+            unreadCount: 0,
+            lastMessage: updatedLastMessage ?? item.lastMessage
+          };
+        })
+      );
+    } catch {
+      // Read receipts are best-effort and should not interrupt chatting.
+    }
+  }
+
+  async function searchUsers(value: string) {
+    setError("");
+
+    try {
+      const result = await api.users(user.id, value);
+      setUsers(result.users);
+    } catch (caught) {
+      setError(translateError(caught, t));
+      setUsers([]);
+    } finally {
+      setUsersLoading(false);
+    }
+  }
+
+  async function selectUser(nextUser: UserListItemDTO) {
+    setSelectedUser({ ...nextUser, unreadCount: 0 });
+    setUsers((current) => current.map((item) => (item.id === nextUser.id ? { ...item, unreadCount: 0 } : item)));
+    setMessagesLoading(true);
+    setError("");
+
+    try {
+      const result = await api.messages(user.id, nextUser.id);
+      setMessages(result.messages);
+    } catch (caught) {
+      const translated = translateError(caught, t);
+      setError(translated === t.errors.generic ? t.errors.couldNotLoadMessages : translated);
+      setMessages([]);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }
+
+  async function sendMessage(text: string, file?: File | null) {
+    if (!selectedUser) return;
+
+    if (file) {
+      try {
+        const result = await api.sendMessageWithFile({
+          senderId: user.id,
+          receiverId: selectedUser.id,
+          text,
+          file
+        });
+        setMessages((current) =>
+          current.some((item) => item.id === result.message.id) ? current : [...current, result.message]
+        );
+        setUsers((current) => bumpUserWithMessage(current, result.message, user.id, selectedUser.id));
+      } catch (caught) {
+        setError(translateError(caught, t));
+      }
+      return;
+    }
+
+    const response = await sendSocketMessage(socket, {
+      senderId: user.id,
+      receiverId: selectedUser.id,
+      text
+    });
+
+    if (!response.ok) {
+      setError(response.code === "SERVER_UNAVAILABLE" ? t.errors.messageNotSent : translateError(response, t));
+    }
+  }
+
+  async function editMessage(message: MessageDTO, text: string) {
+    try {
+      const result = await api.editMessage(message.id, user.id, text);
+      setMessages((current) => current.map((item) => (item.id === result.message.id ? result.message : item)));
+      setUsers((current) =>
+        current.map((item) =>
+          item.lastMessage?.id === result.message.id ? { ...item, lastMessage: result.message } : item
+        )
+      );
+    } catch (caught) {
+      setError(translateError(caught, t));
+    }
+  }
+
+  async function deleteMessage(message: MessageDTO, mode: "me" | "all") {
+    try {
+      await api.deleteMessage(message.id, user.id, mode);
+      setMessages((current) => current.filter((item) => item.id !== message.id));
+      setUsers((current) =>
+        current.map((item) => (item.lastMessage?.id === message.id ? { ...item, lastMessage: null } : item))
+      );
+      void loadUsers();
+    } catch (caught) {
+      setError(translateError(caught, t));
+    }
+  }
+
+  async function pinMessage(message: MessageDTO) {
+    try {
+      const result = await api.pinMessage(message.id, user.id, !message.isPinned);
+      setMessages((current) => current.map((item) => (item.id === result.message.id ? result.message : item)));
+    } catch (caught) {
+      setError(translateError(caught, t));
+    }
+  }
+
+  async function updateProfile(data: { username: string; handle: string; avatarUrl: string | null }) {
+    setProfileLoading(true);
+    setProfileError("");
+
+    try {
+      const result = await api.updateProfile(user.id, data);
+      onUserUpdate(result.user);
+      setProfileOpen(false);
+    } catch (caught) {
+      setProfileError(translateError(caught, t));
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
+  function logout() {
+    clearStoredUser();
+    socket?.emit("user:disconnect");
+    socket?.disconnect();
+    onLogout();
+  }
+
+  const emptyMode = useMemo<"conversations" | "hint" | "search">(() => {
+    const value = query.trim();
+    if (!value) return "conversations";
+    return value.startsWith("@") ? "search" : "hint";
+  }, [query]);
+
+  const pinnedMessages = useMemo(() => {
+    return messages
+      .filter((message) => message.isPinned)
+      .sort((first, second) => new Date(second.sentAt).getTime() - new Date(first.sentAt).getTime());
+  }, [messages]);
+
+  useEffect(() => {
+    setPinnedCursor((current) => {
+      if (!pinnedMessages.length) return 0;
+      return Math.min(current, pinnedMessages.length - 1);
+    });
+  }, [pinnedMessages.length]);
+
+  const pinnedMessage = pinnedMessages[pinnedCursor] ?? null;
+
+  function showNextPinnedMessage() {
+    setPinnedCursor((current) => (pinnedMessages.length ? (current + 1) % pinnedMessages.length : 0));
+  }
+
+  return (
+    <main className="flex min-h-0 flex-1 overflow-hidden bg-background">
+      <Sidebar user={user} onProfileOpen={() => setProfileOpen(true)} />
+      <UserList
+        users={users}
+        selectedUserId={selectedUser?.id}
+        loading={usersLoading}
+        query={query}
+        t={t}
+        emptyMode={emptyMode}
+        onQueryChange={setQuery}
+        onSelect={selectUser}
+      />
+      <section className="flex min-w-0 flex-1 flex-col bg-background">
+        {error ? (
+          <div className="mx-6 mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {error}
+          </div>
+        ) : null}
+        <AnimatePresence mode="wait">
+          {!selectedUser ? (
+            <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-0 flex-1">
+              <EmptyChatState t={t} />
+            </motion.div>
+          ) : (
+            <motion.div
+              key={selectedUser.id}
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.18 }}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <header className="flex h-[82px] shrink-0 items-center justify-between border-b border-borderSoft bg-background/80 px-7">
+                <div className="flex items-center gap-4">
+                  <Avatar username={selectedUser.username} avatarUrl={selectedUser.avatarUrl} online={selectedUser.online} className="h-12 w-12 rounded-full" />
+                  <div>
+                    <h2 className="text-base font-semibold text-primaryText">{selectedUser.username}</h2>
+                    <p className="mt-1 text-xs text-secondaryText">@{selectedUser.handle ?? selectedUser.id}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 rounded-2xl border border-borderSoft bg-panel px-3 py-2 text-xs text-secondaryText">
+                  {selectedUser.online ? <Wifi size={15} className="text-emerald-400" /> : <WifiOff size={15} className="text-red-300" />}
+                  {selectedUser.online ? t.chat.online : t.chat.offline}
+                </div>
+              </header>
+              <MessageList
+                currentUserId={user.id}
+                messages={messages}
+                loading={messagesLoading}
+                t={t}
+                pinnedMessage={pinnedMessage}
+                onEditMessage={editMessage}
+                onDeleteMessage={deleteMessage}
+                onPinMessage={pinMessage}
+                onPinnedConsumed={showNextPinnedMessage}
+                onOpenImage={setImagePreview}
+              />
+              <ChatInput disabled={!connected || messagesLoading} t={t} onSend={sendMessage} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </section>
+      <AnimatePresence>
+        {profileOpen ? (
+          <ProfileModal
+            user={user}
+            t={t}
+            loading={profileLoading}
+            error={profileError}
+            onClose={() => setProfileOpen(false)}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onSave={updateProfile}
+          />
+        ) : null}
+      </AnimatePresence>
+      <AnimatePresence>
+        {settingsOpen ? (
+          <SettingsModal
+            t={t}
+            language={language}
+            onClose={() => setSettingsOpen(false)}
+            onLanguageChange={onLanguageChange}
+            onLogout={logout}
+          />
+        ) : null}
+      </AnimatePresence>
+      <AnimatePresence>
+        {imagePreview ? (
+          <ImageViewer
+            url={imagePreview.url}
+            name={imagePreview.name}
+            closeLabel={t.profile.close}
+            onClose={() => setImagePreview(null)}
+          />
+        ) : null}
+      </AnimatePresence>
+    </main>
+  );
+}
+
+function bumpUserWithMessage(
+  users: UserListItemDTO[],
+  message: MessageDTO,
+  currentUserId: string,
+  selectedUserId: string | null
+) {
+  const otherUserId = message.senderId === currentUserId ? message.receiverId : message.senderId;
+  const index = users.findIndex((item) => item.id === otherUserId);
+
+  if (index === -1) return users;
+
+  const unreadIncrement = message.senderId !== currentUserId && otherUserId !== selectedUserId ? 1 : 0;
+  const next = [...users];
+  const [matched] = next.splice(index, 1);
+  next.unshift({
+    ...matched,
+    lastMessage: message,
+    unreadCount: otherUserId === selectedUserId ? 0 : matched.unreadCount + unreadIncrement
+  });
+  return next;
+}
