@@ -10,7 +10,8 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma db push",
-    "db:check": "tsx src/scripts/initDb.ts"
+    "db:check": "tsx src/scripts/initDb.ts",
+    "db:policies": "tsx src/scripts/applySupabasePolicies.ts"
   },
   "dependencies": {
     "@minimalchat/shared": "1.0.0",

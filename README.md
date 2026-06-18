@@ -1,201 +1,118 @@
 # MinimalChat
 
-MinimalChat is a dark minimalist desktop messenger built with Electron, React, Express, Socket.IO, Prisma and Supabase Postgres.
+MinimalChat is a dark minimalist desktop messenger built with Electron, React, TypeScript, Tailwind CSS and Supabase.
 
-## Architecture
+## Production Architecture
 
-```txt
-apps/
-  desktop/        Electron + React desktop client
-  server/         Express + Socket.IO API server
-packages/
-  shared/         Shared TypeScript DTOs and types
-```
-
-For real messaging between two computers, the app must use one shared public server:
+No separate backend hosting is required.
 
 ```txt
-Your PC app  ─┐
-              ├─> Public MinimalChat server ─> Supabase Postgres
-Her PC app   ─┘                         └────> Supabase Storage
+Your MinimalChat.exe  ─┐
+                       ├─> Supabase Auth
+Her MinimalChat.exe   ─┤   Supabase Postgres
+                       └─> Supabase Realtime + Storage
 ```
 
-The packaged desktop app does not start a local server. It connects to the public server URL baked into the build through `VITE_API_URL` and `VITE_SOCKET_URL`.
+The desktop app connects directly to Supabase using the public anon key. Secret keys are not bundled into the app.
 
-## Supabase Setup
+## Supabase Project
 
-1. Create a Supabase project.
-2. Open `Project Settings -> Database -> Connection string`.
-3. Copy the pooled Postgres connection string and use it as `DATABASE_URL`.
-4. Open `Project Settings -> API`.
-5. Copy:
-   - `Project URL` as `SUPABASE_URL`
-   - `service_role` key as `SUPABASE_SERVICE_ROLE_KEY`
-6. Open `Storage`.
-7. Create a public bucket named `minimalchat-uploads`.
+Already configured for:
 
-Example `apps/server/.env`:
-
-```env
-DATABASE_URL="postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?pgbouncer=true"
-DIRECT_URL="postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres"
-PORT=4000
-CLIENT_ORIGIN="http://localhost:5173"
-SUPABASE_URL="https://PROJECT_REF.supabase.co"
-SUPABASE_SERVICE_ROLE_KEY="YOUR_SERVICE_ROLE_KEY"
-SUPABASE_STORAGE_BUCKET="minimalchat-uploads"
+```txt
+Project URL: https://lqxtxtfqwfltqcphokqz.supabase.co
+Storage bucket: minimalchat-uploads
 ```
 
-Never put `SUPABASE_SERVICE_ROLE_KEY` into the desktop app. It must exist only on the server or hosting provider.
+Required Supabase settings:
+
+1. Authentication -> Sign In / Providers -> Email
+2. Disable email confirmations for easy private testing, or users must confirm email before first login.
+3. Storage -> bucket `minimalchat-uploads` must be public.
+4. Database RLS policies are applied by:
+
+```powershell
+npm.cmd run db:policies
+```
 
 ## Local Setup
-
-```bash
-npm install
-npm run db:generate
-npm run db:push
-npm run build
-```
-
-Windows PowerShell:
 
 ```powershell
 npm.cmd install
 npm.cmd run db:generate
 npm.cmd run db:push
+npm.cmd run db:policies
 npm.cmd run build
 ```
 
 ## Development
 
-Start the server and Electron app together:
-
-```bash
-npm run dev
+```powershell
+npm.cmd run dev
 ```
 
-The local server runs on `http://localhost:4000`.
-
-## Deploy Server
-
-Use any Node.js hosting that supports WebSockets. Render is a simple option.
-
-Recommended Render settings:
-
-```txt
-Runtime: Node
-Build command:
-npm install && npm run db:generate && npm run build -w @minimalchat/shared && npm run build -w apps/server && npm run db:push -w apps/server
-
-Start command:
-npm run start -w apps/server
-
-Health check path:
-/health
-```
-
-Environment variables on hosting:
-
-```env
-DATABASE_URL=your Supabase pooled Postgres URL
-DIRECT_URL=your Supabase session pooler URL
-PORT=10000
-CLIENT_ORIGIN=*
-SUPABASE_URL=your Supabase project URL
-SUPABASE_SERVICE_ROLE_KEY=your Supabase service role key
-SUPABASE_STORAGE_BUCKET=minimalchat-uploads
-```
-
-After deploy, test:
-
-```txt
-https://YOUR_SERVER_URL/health
-```
-
-It should return:
-
-```json
-{ "ok": true }
-```
+The Electron app starts Vite and connects directly to Supabase.
 
 ## Build Windows Installer
 
-Create `apps/desktop/.env.production`:
+The production env file is:
 
-```env
-VITE_API_URL="https://YOUR_SERVER_URL"
-VITE_SOCKET_URL="https://YOUR_SERVER_URL"
+```txt
+apps/desktop/.env.production
 ```
 
-Build the installer:
+It must contain:
+
+```env
+VITE_SUPABASE_URL="https://lqxtxtfqwfltqcphokqz.supabase.co"
+VITE_SUPABASE_ANON_KEY="your anon public key"
+VITE_SUPABASE_STORAGE_BUCKET="minimalchat-uploads"
+```
+
+Build:
 
 ```powershell
 npm.cmd run dist:win
 ```
 
-The installer appears in:
+Installer output:
 
 ```txt
-apps/desktop/release/
+apps/desktop/release/MinimalChat Setup 1.0.0.exe
 ```
 
-Send the `MinimalChat Setup ... .exe` file to another person.
+Send this `.exe` to another Windows PC.
 
 ## Auto Updates
 
-Auto updates use `electron-updater` and GitHub Releases.
+Auto updates use GitHub Releases through `electron-updater`.
 
-Before publishing:
+1. Update `apps/desktop/package.json` version, for example `1.0.1`.
+2. Commit and push.
+3. Create a tag:
 
-1. Create a GitHub repo for the project.
-2. In `apps/desktop/package.json`, replace:
-
-```json
-"owner": "YOUR_GITHUB_USERNAME",
-"repo": "minimalchat"
-```
-
-3. In GitHub repo settings, add an Actions secret:
-
-```txt
-MINIMALCHAT_SERVER_URL=https://YOUR_SERVER_URL
-```
-
-4. Commit and push the project.
-5. Create a version tag:
-
-```bash
+```powershell
 git tag v1.0.1
 git push origin v1.0.1
 ```
 
-GitHub Actions will build and publish the Windows installer. Installed clients check for updates automatically about every 30 minutes and install downloaded updates on app quit.
+GitHub Actions builds and publishes the installer. Installed apps check for updates automatically.
+
+Before using auto-updates, update the `publish` section in `apps/desktop/package.json` if the repository owner/name changes.
 
 ## Useful Scripts
 
-```bash
-npm run dev          # server + Electron client for development
-npm run build        # build shared, server and desktop renderer
-npm run db:generate  # generate Prisma client
-npm run db:push      # sync Prisma schema to Supabase Postgres
-npm run dist:win     # create Windows installer
+```powershell
+npm.cmd run dev          # run desktop development app
+npm.cmd run build        # build shared, server types and desktop renderer
+npm.cmd run db:generate  # generate Prisma client
+npm.cmd run db:push      # sync Prisma schema to Supabase
+npm.cmd run db:policies  # apply RLS, Storage and Realtime policies
+npm.cmd run dist:win     # build Windows installer
 ```
 
-## API
+## Notes
 
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `GET /api/users?currentUserId=...`
-- `GET /api/messages/:userId?currentUserId=...`
-- `POST /api/messages/send`
-
-## Socket.IO Events
-
-- `user:connect`
-- `user:disconnect`
-- `message:send`
-- `message:receive`
-- `message:update`
-- `message:delete`
-- `user:online`
-- `user:offline`
+- `apps/server` remains in the repo for database administration scripts and fallback API code, but production desktop messaging no longer requires Render or any hosted Express server.
+- Do not commit `apps/server/.env`; it contains the service role key.
+- The public anon key in the desktop env is safe to bundle when RLS policies are enabled.

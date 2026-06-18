@@ -350,6 +350,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     clearStoredUser();
     socket?.emit("user:disconnect");
     socket?.disconnect();
+    void api.logout();
     onLogout();
   }
 

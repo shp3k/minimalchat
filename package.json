@@ -8,11 +8,12 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -k -n server,desktop -c magenta,cyan \"npm run dev -w apps/server\" \"npm run dev -w apps/desktop\"",
+    "dev": "npm run dev -w apps/desktop",
     "build": "npm run build -w @minimalchat/shared && npm run build -w apps/server && npm run build -w apps/desktop",
     "db:migrate": "npm run db:migrate -w apps/server",
     "db:push": "npm run db:push -w apps/server",
     "db:generate": "npm run db:generate -w apps/server",
+    "db:policies": "npm run db:policies -w apps/server",
     "dist:win": "npm run dist:win -w apps/desktop"
   },
   "devDependencies": {

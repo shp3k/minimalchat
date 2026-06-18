@@ -138,7 +138,7 @@ app.whenReady().then(async () => {
     callback(permission === "media");
   });
 
-  if (!app.isPackaged && isLocalServerUrl()) {
+  if (!app.isPackaged && process.env.VITE_USE_LOCAL_SERVER === "true" && isLocalServerUrl()) {
     await ensureLocalServer();
   }
   createWindow();
