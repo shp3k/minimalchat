@@ -325,7 +325,7 @@ ipcMain.handle("notification:show-message", (_event, payload) => {
   const notification = new Notification({
     title,
     body,
-    silent: false
+    silent: Boolean(payload?.silent)
   });
 
   notification.on("click", () => {

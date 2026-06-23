@@ -1,17 +1,21 @@
 import type { UserDTO } from "@minimalchat/shared";
-import { EyeOff, Languages, LogOut, X } from "lucide-react";
+import type { ReactNode } from "react";
+import { Bell, EyeOff, Languages, LogOut, Send, Volume2, X } from "lucide-react";
 import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import type { Language, Translation } from "@/lib/i18n";
+import type { SoundSettings } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
 interface SettingsModalProps {
   t: Translation;
   user: UserDTO;
   language: Language;
+  soundSettings: SoundSettings;
   privacyLoading: boolean;
   onClose: () => void;
   onLanguageChange: (language: Language) => void;
+  onSoundSettingsChange: (settings: SoundSettings) => void;
   onLastSeenPrivacyChange: (hideLastSeen: boolean) => void;
   onLogout: () => void;
 }
@@ -20,9 +24,11 @@ export function SettingsModal({
   t,
   user,
   language,
+  soundSettings,
   privacyLoading,
   onClose,
   onLanguageChange,
+  onSoundSettingsChange,
   onLastSeenPrivacyChange,
   onLogout
 }: SettingsModalProps) {
@@ -32,7 +38,7 @@ export function SettingsModal({
         initial={{ opacity: 0, y: 14, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 10, scale: 0.98 }}
-        className="w-full max-w-[380px] rounded-[28px] border border-borderSoft bg-panel p-5 shadow-glow"
+        className="max-h-[calc(100%-32px)] w-full max-w-[380px] overflow-y-auto rounded-[28px] border border-borderSoft bg-panel p-5 shadow-glow"
       >
         <div className="mb-5 flex items-center justify-between">
           <div>
@@ -77,26 +83,33 @@ export function SettingsModal({
               <p className="text-sm font-semibold text-primaryText">{t.profile.hideLastSeen}</p>
               <p className="mt-1 text-xs leading-5 text-secondaryText">{t.profile.hideLastSeenHelp}</p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={user.hideLastSeen}
-              aria-label={t.profile.hideLastSeen}
+            <SettingsSwitch
+              checked={user.hideLastSeen}
+              label={t.profile.hideLastSeen}
               disabled={privacyLoading}
-              onClick={() => onLastSeenPrivacyChange(!user.hideLastSeen)}
-              className={cn(
-                "relative mt-1 h-6 w-11 shrink-0 rounded-full border transition disabled:opacity-50",
-                user.hideLastSeen ? "border-accent bg-accent" : "border-borderSoft bg-panel2"
-              )}
-            >
-              <span
-                className={cn(
-                  "absolute left-[3px] top-1/2 h-[18px] w-[18px] -translate-y-1/2 rounded-full bg-white shadow-sm transition-transform",
-                  user.hideLastSeen ? "translate-x-[18px]" : "translate-x-0"
-                )}
-              />
-            </button>
+              className="mt-1"
+              onChange={onLastSeenPrivacyChange}
+            />
           </div>
+        </div>
+
+        <div className="mt-3 rounded-3xl border border-borderSoft bg-background p-4">
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-primaryText">
+            <Volume2 size={16} className="text-accent" />
+            {t.profile.sounds}
+          </div>
+          <SoundSettingRow
+            icon={<Bell size={15} />}
+            label={t.profile.notificationSound}
+            checked={soundSettings.notifications}
+            onChange={(notifications) => onSoundSettingsChange({ ...soundSettings, notifications })}
+          />
+          <SoundSettingRow
+            icon={<Send size={15} />}
+            label={t.profile.sentMessageSound}
+            checked={soundSettings.sentMessages}
+            onChange={(sentMessages) => onSoundSettingsChange({ ...soundSettings, sentMessages })}
+          />
         </div>
 
         <Button
@@ -113,5 +126,62 @@ export function SettingsModal({
         </Button>
       </motion.div>
     </div>
+  );
+}
+
+function SoundSettingRow({
+  icon,
+  label,
+  checked,
+  onChange
+}: {
+  icon: ReactNode;
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex min-h-10 items-center gap-3 border-t border-borderSoft first-of-type:border-t-0">
+      <span className="text-secondaryText">{icon}</span>
+      <span className="min-w-0 flex-1 text-sm text-primaryText">{label}</span>
+      <SettingsSwitch checked={checked} label={label} onChange={onChange} />
+    </div>
+  );
+}
+
+function SettingsSwitch({
+  checked,
+  label,
+  disabled,
+  className,
+  onChange
+}: {
+  checked: boolean;
+  label: string;
+  disabled?: boolean;
+  className?: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative h-6 w-11 shrink-0 rounded-full border transition disabled:opacity-50",
+        checked ? "border-accent bg-accent" : "border-borderSoft bg-panel2",
+        className
+      )}
+    >
+      <span
+        className={cn(
+          "absolute left-[3px] top-1/2 h-[18px] w-[18px] -translate-y-1/2 rounded-full bg-white shadow-sm transition-transform",
+          checked ? "translate-x-[18px]" : "translate-x-0"
+        )}
+      />
+    </button>
   );
 }

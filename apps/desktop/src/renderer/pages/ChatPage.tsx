@@ -15,7 +15,13 @@ import { api } from "@/lib/api";
 import type { Language } from "@/lib/i18n";
 import { getTranslation, translateError } from "@/lib/i18n";
 import { getPresenceText } from "@/lib/presence";
-import { clearStoredUser } from "@/lib/storage";
+import { playUiSound } from "@/lib/sounds";
+import {
+  clearStoredUser,
+  getStoredSoundSettings,
+  storeSoundSettings,
+  type SoundSettings
+} from "@/lib/storage";
 import { createChatSocket, sendSocketMessage, type ChatSocket } from "@/lib/socket";
 
 interface ChatPageProps {
@@ -39,6 +45,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const [replyTarget, setReplyTarget] = useState<MessageDTO | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [privacyLoading, setPrivacyLoading] = useState(false);
+  const [soundSettings, setSoundSettings] = useState<SoundSettings>(() => getStoredSoundSettings());
   const [profileError, setProfileError] = useState("");
   const [pinnedCursor, setPinnedCursor] = useState(0);
   const [typingUserIds, setTypingUserIds] = useState<Record<string, boolean>>({});
@@ -48,6 +55,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const selectedUserRef = useRef<UserListItemDTO | null>(null);
   const usersRef = useRef<UserListItemDTO[]>([]);
   const typingTimersRef = useRef<Record<string, number>>({});
+  const soundSettingsRef = useRef(soundSettings);
   const t = getTranslation(language);
   const totalUnreadCount = useMemo(
     () => users.reduce((sum, item) => sum + Math.max(0, item.unreadCount), 0),
@@ -65,6 +73,11 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   useEffect(() => {
     selectedUserRef.current = selectedUser;
   }, [selectedUser]);
+
+  useEffect(() => {
+    soundSettingsRef.current = soundSettings;
+    storeSoundSettings(soundSettings);
+  }, [soundSettings]);
 
   useEffect(() => {
     void window.minimalChatApp?.setUnreadCount?.(totalUnreadCount);
@@ -364,18 +377,24 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     }
   }
 
-  function showIncomingMessageNotification(message: MessageDTO, force: boolean) {
+  async function showIncomingMessageNotification(message: MessageDTO, force: boolean) {
     const sender =
       selectedUserRef.current?.id === message.senderId
         ? selectedUserRef.current
         : usersRef.current.find((item) => item.id === message.senderId);
+    const soundEnabled = soundSettingsRef.current.notifications;
 
-    return window.minimalChatNotifications?.showMessage({
+    const notificationShown = await window.minimalChatNotifications?.showMessage({
       title: sender?.username || "MinimalChat",
       body: getNotificationBody(message, t),
       senderId: message.senderId,
-      force
+      force,
+      silent: !soundEnabled
     });
+
+    if (soundEnabled && !notificationShown) {
+      void playUiSound("notification");
+    }
   }
 
   async function sendMessage(text: string, file?: File | null) {
@@ -394,6 +413,9 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
           current.some((item) => item.id === result.message.id) ? current : [...current, result.message]
         );
         setUsers((current) => bumpUserWithMessage(current, result.message, user.id, selectedUser.id));
+        if (soundSettings.sentMessages) {
+          void playUiSound("sent");
+        }
       } catch (caught) {
         setError(translateError(caught, t));
       }
@@ -409,6 +431,11 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
     if (!response.ok) {
       setError(response.code === "SERVER_UNAVAILABLE" ? t.errors.messageNotSent : translateError(response, t));
+      return;
+    }
+
+    if (soundSettings.sentMessages) {
+      void playUiSound("sent");
     }
   }
 
@@ -666,9 +693,11 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
             t={t}
             user={user}
             language={language}
+            soundSettings={soundSettings}
             privacyLoading={privacyLoading}
             onClose={() => setSettingsOpen(false)}
             onLanguageChange={onLanguageChange}
+            onSoundSettingsChange={setSoundSettings}
             onLastSeenPrivacyChange={updateLastSeenPrivacy}
             onLogout={logout}
           />

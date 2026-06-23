@@ -29,6 +29,7 @@ declare global {
         body: string;
         senderId: string;
         force?: boolean;
+        silent?: boolean;
       }) => Promise<boolean>;
       onMessageClick: (callback: (payload: { senderId: string }) => void) => () => void;
     };
