@@ -1,4 +1,4 @@
-const { app, BrowserWindow, clipboard, ipcMain, session, shell } = require("electron");
+const { app, BrowserWindow, Notification, clipboard, ipcMain, session, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -17,6 +17,8 @@ let serverProcess = null;
 const SERVER_URL = process.env.VITE_API_URL ?? "http://localhost:4000";
 const PROJECT_ROOT = path.resolve(__dirname, "../../../..");
 const SERVER_DIR = path.join(PROJECT_ROOT, "apps", "server");
+
+app.setAppUserModelId("com.minimalchat.desktop");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -168,6 +170,23 @@ function setupAutoUpdates() {
   interval.unref?.();
 }
 
+function focusMainWindow() {
+  if (!mainWindow) return;
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function shouldShowMessageNotification(force) {
+  if (force) return true;
+  if (!mainWindow) return true;
+  return mainWindow.isMinimized() || !mainWindow.isFocused();
+}
+
 app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "media");
@@ -215,4 +234,29 @@ ipcMain.handle("app:open-external", (_event, url) => {
 ipcMain.handle("clipboard:read-text", () => clipboard.readText());
 ipcMain.handle("clipboard:write-text", (_event, value) => {
   clipboard.writeText(String(value ?? ""));
+});
+ipcMain.handle("notification:show-message", (_event, payload) => {
+  if (!Notification.isSupported() || !shouldShowMessageNotification(Boolean(payload?.force))) {
+    return false;
+  }
+
+  const title = String(payload?.title ?? "MinimalChat").slice(0, 80);
+  const body = String(payload?.body ?? "").slice(0, 240);
+  const senderId = typeof payload?.senderId === "string" ? payload.senderId : "";
+  const notification = new Notification({
+    title,
+    body,
+    silent: false
+  });
+
+  notification.on("click", () => {
+    focusMainWindow();
+
+    if (senderId) {
+      mainWindow?.webContents.send("notification:message-click", { senderId });
+    }
+  });
+
+  notification.show();
+  return true;
 });

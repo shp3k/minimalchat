@@ -14,5 +14,14 @@ declare global {
       readText: () => Promise<string>;
       writeText: (value: string) => Promise<void>;
     };
+    minimalChatNotifications?: {
+      showMessage: (payload: {
+        title: string;
+        body: string;
+        senderId: string;
+        force?: boolean;
+      }) => Promise<boolean>;
+      onMessageClick: (callback: (payload: { senderId: string }) => void) => () => void;
+    };
   }
 }

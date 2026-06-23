@@ -14,3 +14,12 @@ contextBridge.exposeInMainWorld("minimalChatClipboard", {
   readText: () => ipcRenderer.invoke("clipboard:read-text"),
   writeText: (value) => ipcRenderer.invoke("clipboard:write-text", value)
 });
+
+contextBridge.exposeInMainWorld("minimalChatNotifications", {
+  showMessage: (payload) => ipcRenderer.invoke("notification:show-message", payload),
+  onMessageClick: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("notification:message-click", listener);
+    return () => ipcRenderer.removeListener("notification:message-click", listener);
+  }
+});

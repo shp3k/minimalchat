@@ -43,11 +43,16 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState("");
   const selectedUserRef = useRef<UserListItemDTO | null>(null);
+  const usersRef = useRef<UserListItemDTO[]>([]);
   const t = getTranslation(language);
 
   useEffect(() => {
     selectedUserRef.current = selectedUser;
   }, [selectedUser]);
+
+  useEffect(() => {
+    usersRef.current = users;
+  }, [users]);
 
   useEffect(() => {
     setPinnedCursor(0);
@@ -100,6 +105,16 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   }, [imagePreview, profileOpen, replyTarget, selectedUser, settingsOpen]);
 
   useEffect(() => {
+    const removeNotificationClickListener = window.minimalChatNotifications?.onMessageClick((payload) => {
+      if (payload.senderId) {
+        void openConversationFromNotification(payload.senderId);
+      }
+    });
+
+    return () => removeNotificationClickListener?.();
+  }, [user.id]);
+
+  useEffect(() => {
     const chatSocket = createChatSocket(user.id);
     setSocket(chatSocket);
 
@@ -121,6 +136,9 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
       });
       if (activeUser && belongsToSelected && message.senderId === activeUser.id && message.receiverId === user.id) {
         void markConversationRead(activeUser.id);
+      }
+      if (message.receiverId === user.id) {
+        void showIncomingMessageNotification(message, Boolean(!belongsToSelected));
       }
       setUsers((current) => {
         const nextUsers = bumpUserWithMessage(current, message, user.id, activeUser?.id ?? null);
@@ -275,6 +293,41 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     } finally {
       setMessagesLoading(false);
     }
+  }
+
+  async function openConversationFromNotification(senderId: string) {
+    const knownUser = usersRef.current.find((item) => item.id === senderId);
+
+    if (knownUser) {
+      await selectUser(knownUser);
+      return;
+    }
+
+    try {
+      const result = await api.users(user.id);
+      setUsers(result.users);
+      const freshUser = result.users.find((item) => item.id === senderId);
+
+      if (freshUser) {
+        await selectUser(freshUser);
+      }
+    } catch {
+      // Notification clicks should never interrupt the active chat.
+    }
+  }
+
+  function showIncomingMessageNotification(message: MessageDTO, force: boolean) {
+    const sender =
+      selectedUserRef.current?.id === message.senderId
+        ? selectedUserRef.current
+        : usersRef.current.find((item) => item.id === message.senderId);
+
+    return window.minimalChatNotifications?.showMessage({
+      title: sender?.username || "MinimalChat",
+      body: getNotificationBody(message, t),
+      senderId: message.senderId,
+      force
+    });
   }
 
   async function sendMessage(text: string, file?: File | null) {
@@ -530,4 +583,22 @@ function bumpUserWithMessage(
 
 function getMessageAuthorName(message: MessageDTO, currentUser: UserDTO, selectedUser: UserDTO) {
   return message.senderId === currentUser.id ? currentUser.username : selectedUser.username;
+}
+
+function getNotificationBody(message: MessageDTO, t: ReturnType<typeof getTranslation>) {
+  const text = message.text.trim();
+
+  if (text) {
+    return text.length > 120 ? `${text.slice(0, 117)}...` : text;
+  }
+
+  if (message.attachmentName) {
+    return message.attachmentName;
+  }
+
+  if (message.attachmentMime?.startsWith("image/")) {
+    return t.chat.originalMessage;
+  }
+
+  return t.chat.originalMessage;
 }
