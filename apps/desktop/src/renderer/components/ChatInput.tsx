@@ -18,7 +18,8 @@ interface ChatInputProps {
 }
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
-const TYPING_IDLE_MS = 1800;
+const TYPING_IDLE_MS = 2200;
+const TYPING_HEARTBEAT_MS = 1000;
 
 export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelReply, onSend, onTypingChange }: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -37,6 +38,7 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
   const recordingTimerRef = useRef<number | null>(null);
   const typingActiveRef = useRef(false);
   const typingIdleTimerRef = useRef<number | null>(null);
+  const typingHeartbeatTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
@@ -127,12 +129,19 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
 
     typingActiveRef.current = true;
     onTypingChange?.(true);
+    typingHeartbeatTimerRef.current = window.setInterval(() => {
+      onTypingChange?.(true);
+    }, TYPING_HEARTBEAT_MS);
   }
 
   function stopTyping() {
     if (typingIdleTimerRef.current) {
       window.clearTimeout(typingIdleTimerRef.current);
       typingIdleTimerRef.current = null;
+    }
+    if (typingHeartbeatTimerRef.current) {
+      window.clearInterval(typingHeartbeatTimerRef.current);
+      typingHeartbeatTimerRef.current = null;
     }
 
     if (!typingActiveRef.current) return;
@@ -183,6 +192,10 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
 
     setText(nextText);
     setPasteMenu(null);
+    if (nextText.trim()) {
+      startTyping();
+      scheduleTypingStop();
+    }
     window.requestAnimationFrame(() => {
       textarea?.focus();
       textarea?.setSelectionRange(nextCursor, nextCursor);
