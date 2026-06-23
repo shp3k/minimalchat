@@ -15,6 +15,7 @@ model User {
   handle       String?   @unique
   avatarUrl    String?
   lastSeenAt   DateTime?
+  hideLastSeen Boolean   @default(false)
   passwordHash String
   createdAt    DateTime  @default(now())
   sentMessages Message[] @relation("SentMessages")

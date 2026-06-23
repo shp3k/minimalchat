@@ -63,6 +63,7 @@ type UserRow = {
   handle: string | null;
   avatarUrl: string | null;
   lastSeenAt: string | null;
+  hideLastSeen: boolean;
   createdAt: string;
 };
 
@@ -86,7 +87,7 @@ type MessageRow = {
   isRead: boolean;
 };
 
-function toUserDTO(row: UserRow, online = false): UserDTO {
+export function toUserDTO(row: UserRow, online = false): UserDTO {
   return {
     id: row.id,
     username: row.username,
@@ -94,6 +95,7 @@ function toUserDTO(row: UserRow, online = false): UserDTO {
     handle: row.handle,
     avatarUrl: row.avatarUrl,
     lastSeenAt: row.lastSeenAt ? toUtcIsoString(row.lastSeenAt) : null,
+    hideLastSeen: row.hideLastSeen ?? false,
     createdAt: toUtcIsoString(row.createdAt),
     online
   };
@@ -321,6 +323,21 @@ export const api = {
       .from("User")
       .update({ lastSeenAt: new Date().toISOString() })
       .eq("id", currentUserId);
+  },
+
+  async updateLastSeenPrivacy(currentUserId: string, hideLastSeen: boolean): Promise<{ user: UserDTO }> {
+    const result = await supabase
+      .from("User")
+      .update({ hideLastSeen })
+      .eq("id", currentUserId)
+      .select("*")
+      .single<UserRow>();
+
+    if (result.error) {
+      throw new ApiRequestError(result.error.message, result.error.code);
+    }
+
+    return { user: toUserDTO(result.data, true) };
   },
 
   async users(currentUserId: string, search?: string): Promise<{ users: UserListItemDTO[] }> {

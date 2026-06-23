@@ -38,6 +38,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const [imagePreview, setImagePreview] = useState<{ url: string; name: string } | null>(null);
   const [replyTarget, setReplyTarget] = useState<MessageDTO | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [privacyLoading, setPrivacyLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [pinnedCursor, setPinnedCursor] = useState(0);
   const [typingUserIds, setTypingUserIds] = useState<Record<string, boolean>>({});
@@ -52,6 +53,14 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     () => users.reduce((sum, item) => sum + Math.max(0, item.unreadCount), 0),
     [users]
   );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setUsers((current) => [...current]);
+    }, 15_000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     selectedUserRef.current = selectedUser;
@@ -219,6 +228,14 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
     chatSocket.on("user:online", setOnline);
     chatSocket.on("user:offline", setOffline);
+    chatSocket.on("user:update", (updatedUser: UserDTO) => {
+      setUsers((current) =>
+        current.map((item) => (item.id === updatedUser.id ? { ...item, ...updatedUser, online: item.online } : item))
+      );
+      setSelectedUser((current) =>
+        current?.id === updatedUser.id ? { ...current, ...updatedUser, online: current.online } : current
+      );
+    });
 
     return () => {
       chatSocket.emit("user:disconnect");
@@ -483,6 +500,20 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     }
   }
 
+  async function updateLastSeenPrivacy(hideLastSeen: boolean) {
+    setPrivacyLoading(true);
+    setError("");
+
+    try {
+      const result = await api.updateLastSeenPrivacy(user.id, hideLastSeen);
+      onUserUpdate({ ...result.user, online: user.online });
+    } catch (caught) {
+      setError(translateError(caught, t));
+    } finally {
+      setPrivacyLoading(false);
+    }
+  }
+
   function logout() {
     clearStoredUser();
     socket?.emit("user:disconnect");
@@ -633,9 +664,12 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
         {settingsOpen ? (
           <SettingsModal
             t={t}
+            user={user}
             language={language}
+            privacyLoading={privacyLoading}
             onClose={() => setSettingsOpen(false)}
             onLanguageChange={onLanguageChange}
+            onLastSeenPrivacyChange={updateLastSeenPrivacy}
             onLogout={logout}
           />
         ) : null}

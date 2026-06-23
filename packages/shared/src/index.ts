@@ -5,6 +5,7 @@ export interface UserDTO {
   handle: string | null;
   avatarUrl: string | null;
   lastSeenAt: string | null;
+  hideLastSeen: boolean;
   createdAt: string;
   online?: boolean;
 }

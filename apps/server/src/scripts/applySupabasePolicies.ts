@@ -9,10 +9,12 @@ const statements = [
   `grant select, insert, update, delete on table storage.objects to authenticated`,
   `alter table public."Message" add column if not exists "replyToMessageId" text`,
   `alter table public."User" add column if not exists "lastSeenAt" timestamp(3)`,
+  `alter table public."User" add column if not exists "hideLastSeen" boolean not null default false`,
   `create index if not exists "Message_replyToMessageId_idx" on public."Message" ("replyToMessageId")`,
   `alter table public."User" enable row level security`,
   `alter table public."Message" enable row level security`,
   `alter table public."Message" replica identity full`,
+  `alter table public."User" replica identity full`,
   `drop policy if exists "Profiles are visible to authenticated users" on public."User"`,
   `drop policy if exists "Users can create own profile" on public."User"`,
   `drop policy if exists "Users can update own profile" on public."User"`,
@@ -31,7 +33,8 @@ const statements = [
   `drop policy if exists "Authenticated users can upload message files" on storage.objects`,
   `create policy "Authenticated users can read uploads" on storage.objects for select to authenticated using (bucket_id = 'minimalchat-uploads')`,
   `create policy "Authenticated users can upload message files" on storage.objects for insert to authenticated with check (bucket_id = 'minimalchat-uploads')`,
-  `do $$ begin if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'Message') then alter publication supabase_realtime add table public."Message"; end if; end $$`
+  `do $$ begin if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'Message') then alter publication supabase_realtime add table public."Message"; end if; end $$`,
+  `do $$ begin if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'User') then alter publication supabase_realtime add table public."User"; end if; end $$`
 ];
 
 async function main() {

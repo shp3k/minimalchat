@@ -9,6 +9,7 @@ export function toUserDTO(user: User, online = false): UserDTO {
     handle: user.handle,
     avatarUrl: user.avatarUrl,
     lastSeenAt: user.lastSeenAt ? user.lastSeenAt.toISOString() : null,
+    hideLastSeen: user.hideLastSeen,
     createdAt: user.createdAt.toISOString(),
     online
   };

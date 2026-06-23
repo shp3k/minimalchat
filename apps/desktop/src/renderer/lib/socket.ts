@@ -1,6 +1,6 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { MessageDTO, OnlineUsersDTO, SendMessageDTO, TypingDTO } from "@minimalchat/shared";
-import { api, toMessageDTO } from "@/lib/api";
+import { api, toMessageDTO, toUserDTO } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 
 type Handler = (...args: any[]) => void;
@@ -11,6 +11,7 @@ export class SupabaseChatSocket {
   private handlers = new Map<string, Set<Handler>>();
   private channel: RealtimeChannel;
   private onlineIds = new Set<string>();
+  private lastSeenTimer: number | null = null;
 
   constructor(private userId: string) {
     this.channel = supabase
@@ -39,6 +40,9 @@ export class SupabaseChatSocket {
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "Message" }, (payload) => {
         this.emitLocal("message:delete", { id: (payload.old as PopupPayload).id });
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "User" }, (payload) => {
+        this.emitLocal("user:update", toUserDTO(payload.new as any));
       })
       .on("broadcast", { event: "typing" }, (payload) => {
         const typing = payload.payload as TypingDTO;
@@ -71,6 +75,10 @@ export class SupabaseChatSocket {
 
         await this.channel.track({ userId });
         this.connected = true;
+        void api.updateLastSeen(userId);
+        this.lastSeenTimer = window.setInterval(() => {
+          void api.updateLastSeen(userId);
+        }, 30_000);
         this.emitLocal("connect");
       });
   }
@@ -98,6 +106,10 @@ export class SupabaseChatSocket {
   disconnect() {
     if (!this.connected) return;
     this.connected = false;
+    if (this.lastSeenTimer !== null) {
+      window.clearInterval(this.lastSeenTimer);
+      this.lastSeenTimer = null;
+    }
     void api.updateLastSeen(this.userId);
     void this.channel.untrack();
     void supabase.removeChannel(this.channel);
