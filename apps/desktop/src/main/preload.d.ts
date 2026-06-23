@@ -7,5 +7,8 @@ declare global {
       maximize: () => Promise<void>;
       close: () => Promise<void>;
     };
+    minimalChatApp?: {
+      openExternal: (url: string) => Promise<void>;
+    };
   }
 }

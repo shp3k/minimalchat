@@ -41,6 +41,22 @@ function isLocalServerUrl() {
   return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(SERVER_URL);
 }
 
+function isSafeExternalUrl(url) {
+  return /^https?:\/\//i.test(url);
+}
+
+function isAppNavigationUrl(url) {
+  if (!process.env.VITE_DEV_SERVER_URL) {
+    return url.startsWith("file://");
+  }
+
+  try {
+    return new URL(url).origin === new URL(process.env.VITE_DEV_SERVER_URL).origin;
+  } catch {
+    return false;
+  }
+}
+
 async function waitForServer(attempts, delayMs) {
   for (let index = 0; index < attempts; index += 1) {
     if (await checkServer()) {
@@ -114,11 +130,21 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) {
+    if (isSafeExternalUrl(url)) {
       shell.openExternal(url);
     }
 
     return { action: "deny" };
+  });
+
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (isAppNavigationUrl(url)) return;
+
+    event.preventDefault();
+
+    if (isSafeExternalUrl(url)) {
+      shell.openExternal(url);
+    }
   });
 
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -182,3 +208,7 @@ ipcMain.handle("window:maximize", () => {
   }
 });
 ipcMain.handle("window:close", () => mainWindow?.close());
+ipcMain.handle("app:open-external", (_event, url) => {
+  if (typeof url !== "string" || !isSafeExternalUrl(url)) return;
+  return shell.openExternal(url);
+});

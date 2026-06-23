@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { MessageDTO } from "@minimalchat/shared";
-import { Check, CheckCheck, Copy, Download, FileIcon, Pause, Pencil, Pin, Play, Trash2, X } from "lucide-react";
+import { Check, CheckCheck, Copy, Download, ExternalLink, FileIcon, Pause, Pencil, Pin, Play, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import type { Translation } from "@/lib/i18n";
 import { cn, formatMessageTime } from "@/lib/utils";
@@ -308,6 +308,8 @@ interface AttachmentPreviewProps {
 }
 
 function AttachmentPreview({ url, name, mime, size, mine, onOpenImage }: AttachmentPreviewProps) {
+  const isPdf = mime === "application/pdf" || name.toLowerCase().endsWith(".pdf");
+
   if (mime.startsWith("image/")) {
     return (
       <button
@@ -331,6 +333,24 @@ function AttachmentPreview({ url, name, mime, size, mine, onOpenImage }: Attachm
     return <AudioAttachment url={url} name={name} mine={mine} />;
   }
 
+  if (isPdf) {
+    return (
+      <button
+        type="button"
+        className={cn(
+          "flex w-[360px] max-w-full min-w-0 items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition hover:bg-white/[0.08]",
+          mine ? "border-white/18 bg-white/[0.10]" : "border-borderSoft bg-background/55"
+        )}
+        onClick={(event) => {
+          event.stopPropagation();
+          void openExternalUrl(url);
+        }}
+      >
+        <FileCardContent name={name} size={size} mine={mine} actionIcon={<ExternalLink size={17} className="shrink-0 opacity-75" />} />
+      </button>
+    );
+  }
+
   return (
     <a
       href={url}
@@ -341,6 +361,24 @@ function AttachmentPreview({ url, name, mime, size, mine, onOpenImage }: Attachm
       )}
       onClick={(event) => event.stopPropagation()}
     >
+      <FileCardContent name={name} size={size} mine={mine} />
+    </a>
+  );
+}
+
+function FileCardContent({
+  name,
+  size,
+  mine,
+  actionIcon = <Download size={17} className="shrink-0 opacity-75" />
+}: {
+  name: string;
+  size: number | null;
+  mine: boolean;
+  actionIcon?: ReactNode;
+}) {
+  return (
+    <>
       <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", mine ? "bg-white/14" : "bg-accent/14")}>
         <FileIcon size={18} />
       </div>
@@ -350,8 +388,8 @@ function AttachmentPreview({ url, name, mime, size, mine, onOpenImage }: Attachm
           {size ? formatFileSize(size) : "File"}
         </p>
       </div>
-      <Download size={17} className="shrink-0 opacity-75" />
-    </a>
+      {actionIcon}
+    </>
   );
 }
 
@@ -453,6 +491,15 @@ function getAttachmentUrl(value: string | null) {
 
 function getCopyPayload(message: MessageDTO, attachmentUrl: string | null) {
   return [message.text, attachmentUrl].filter(Boolean).join("\n");
+}
+
+async function openExternalUrl(url: string) {
+  if (window.minimalChatApp?.openExternal) {
+    await window.minimalChatApp.openExternal(url);
+    return;
+  }
+
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 function formatFileSize(bytes: number) {

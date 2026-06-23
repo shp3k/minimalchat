@@ -5,3 +5,7 @@ contextBridge.exposeInMainWorld("minimalChatWindow", {
   maximize: () => ipcRenderer.invoke("window:maximize"),
   close: () => ipcRenderer.invoke("window:close")
 });
+
+contextBridge.exposeInMainWorld("minimalChatApp", {
+  openExternal: (url) => ipcRenderer.invoke("app:open-external", url)
+});
