@@ -24,10 +24,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Publish Windows installer
-        run: npm run publish:win -w apps/desktop
+      - name: Build Windows installer
+        run: npm run dist:win -w apps/desktop
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_SUPABASE_STORAGE_BUCKET: minimalchat-uploads
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MinimalChat ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.exe.blockmap
+            apps/desktop/release/latest.yml
