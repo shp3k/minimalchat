@@ -98,6 +98,7 @@ export class SupabaseChatSocket {
   disconnect() {
     if (!this.connected) return;
     this.connected = false;
+    void api.updateLastSeen(this.userId);
     void this.channel.untrack();
     void supabase.removeChannel(this.channel);
     this.emitLocal("disconnect");

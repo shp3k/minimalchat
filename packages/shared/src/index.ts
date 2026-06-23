@@ -4,6 +4,7 @@ export interface UserDTO {
   email: string;
   handle: string | null;
   avatarUrl: string | null;
+  lastSeenAt: string | null;
   createdAt: string;
   online?: boolean;
 }

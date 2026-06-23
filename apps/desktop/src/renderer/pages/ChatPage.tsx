@@ -206,11 +206,13 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
       );
     };
     const setOffline = (payload: OnlineUsersDTO) => {
+      const lastSeenAt = new Date().toISOString();
+
       setUsers((current) =>
-        current.map((item) => (payload.userIds.includes(item.id) ? { ...item, online: false } : item))
+        current.map((item) => (payload.userIds.includes(item.id) ? { ...item, online: false, lastSeenAt } : item))
       );
       setSelectedUser((current) =>
-        current && payload.userIds.includes(current.id) ? { ...current, online: false } : current
+        current && payload.userIds.includes(current.id) ? { ...current, online: false, lastSeenAt } : current
       );
     };
 
@@ -509,6 +511,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
   const pinnedMessage = pinnedMessages[pinnedCursor] ?? null;
   const selectedUserTyping = Boolean(selectedUser && typingUserIds[selectedUser.id]);
+  const selectedUserPresenceText = selectedUser ? getPresenceText(selectedUser, t) : "";
 
   function showNextPinnedMessage() {
     setPinnedCursor((current) => (pinnedMessages.length ? (current + 1) % pinnedMessages.length : 0));
@@ -581,7 +584,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                 </div>
                 <div className="flex items-center gap-2 rounded-2xl border border-borderSoft bg-panel px-3 py-2 text-xs text-secondaryText">
                   {selectedUser.online ? <Wifi size={15} className="text-emerald-400" /> : <WifiOff size={15} className="text-red-300" />}
-                  {selectedUser.online ? t.chat.online : t.chat.offline}
+                  {selectedUserPresenceText}
                 </div>
               </header>
               <MessageList
@@ -674,6 +677,33 @@ function bumpUserWithMessage(
 
 function getMessageAuthorName(message: MessageDTO, currentUser: UserDTO, selectedUser: UserDTO) {
   return message.senderId === currentUser.id ? currentUser.username : selectedUser.username;
+}
+
+function getPresenceText(user: UserDTO, t: ReturnType<typeof getTranslation>) {
+  if (user.online) {
+    return t.chat.online;
+  }
+
+  if (!user.lastSeenAt) {
+    return t.chat.lastSeenRecently;
+  }
+
+  const lastSeenDate = new Date(user.lastSeenAt);
+
+  if (Number.isNaN(lastSeenDate.getTime())) {
+    return t.chat.lastSeenRecently;
+  }
+
+  const minutesSinceLastSeen = (Date.now() - lastSeenDate.getTime()) / 60000;
+
+  if (minutesSinceLastSeen < 5) {
+    return t.chat.lastSeenRecently;
+  }
+
+  return `${t.chat.lastSeenAt} ${lastSeenDate.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  })}`;
 }
 
 function getNotificationBody(message: MessageDTO, t: ReturnType<typeof getTranslation>) {

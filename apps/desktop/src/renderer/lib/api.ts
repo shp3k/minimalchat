@@ -62,6 +62,7 @@ type UserRow = {
   email: string;
   handle: string | null;
   avatarUrl: string | null;
+  lastSeenAt: string | null;
   createdAt: string;
 };
 
@@ -92,6 +93,7 @@ function toUserDTO(row: UserRow, online = false): UserDTO {
     email: row.email,
     handle: row.handle,
     avatarUrl: row.avatarUrl,
+    lastSeenAt: row.lastSeenAt ? toUtcIsoString(row.lastSeenAt) : null,
     createdAt: toUtcIsoString(row.createdAt),
     online
   };
@@ -306,7 +308,19 @@ export const api = {
   },
 
   async logout() {
+    await this.updateLastSeen();
     await supabase.auth.signOut();
+  },
+
+  async updateLastSeen(userId?: string) {
+    const currentUserId = userId ?? (await supabase.auth.getUser()).data.user?.id;
+
+    if (!currentUserId) return;
+
+    await supabase
+      .from("User")
+      .update({ lastSeenAt: new Date().toISOString() })
+      .eq("id", currentUserId);
   },
 
   async users(currentUserId: string, search?: string): Promise<{ users: UserListItemDTO[] }> {

@@ -60,6 +60,8 @@ export const translations = {
       originalMessageUnavailable: "Original message is unavailable",
       online: "online",
       offline: "offline",
+      lastSeenRecently: "last seen recently",
+      lastSeenAt: "last seen at",
       typing: "typing..."
     },
     profile: {
@@ -161,6 +163,8 @@ export const translations = {
       originalMessageUnavailable: "Исходное сообщение недоступно",
       online: "онлайн",
       offline: "офлайн",
+      lastSeenRecently: "был(а) недавно",
+      lastSeenAt: "был(а) в",
       typing: "печатает..."
     },
     profile: {

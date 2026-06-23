@@ -70,6 +70,17 @@ function removeSocket(socketId: string) {
   return null;
 }
 
+async function updateLastSeen(userId: string) {
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { lastSeenAt: new Date() }
+    });
+  } catch {
+    // Last seen is best-effort and should not break presence updates.
+  }
+}
+
 export function setupSocket(io: Server) {
   ioRef = io;
 
@@ -92,6 +103,7 @@ export function setupSocket(io: Server) {
     socket.on("user:disconnect", () => {
       const offlineUserId = removeSocket(socket.id);
       if (offlineUserId) {
+        void updateLastSeen(offlineUserId);
         socket.broadcast.emit("user:offline", { userIds: [offlineUserId] });
       }
     });
@@ -131,6 +143,7 @@ export function setupSocket(io: Server) {
     socket.on("disconnect", () => {
       const offlineUserId = removeSocket(socket.id);
       if (offlineUserId) {
+        void updateLastSeen(offlineUserId);
         socket.broadcast.emit("user:offline", { userIds: [offlineUserId] });
       }
     });
