@@ -85,6 +85,7 @@ export const translations = {
       couldNotLoadUsers: "Could not load users",
       couldNotLoadMessages: "Could not load messages",
       invalidCredentials: "Invalid email or password",
+      emailNotConfirmed: "Email confirmation is enabled in Supabase. Confirm this user or turn it off in Authentication settings.",
       userExists: "User with this email already exists",
       handleTaken: "This @handle is already taken",
       invalidHandle: "Use 3-24 latin letters, numbers or underscores.",
@@ -177,6 +178,7 @@ export const translations = {
       couldNotLoadUsers: "Не удалось загрузить пользователей",
       couldNotLoadMessages: "Не удалось загрузить сообщения",
       invalidCredentials: "Неверный email или пароль",
+      emailNotConfirmed: "В Supabase включено подтверждение email. Подтвердите пользователя или отключите подтверждение в Authentication settings.",
       userExists: "Пользователь с таким email уже существует",
       handleTaken: "Этот @ник уже занят",
       invalidHandle: "Используйте 3-24 латинские буквы, цифры или подчёркивания.",
@@ -199,6 +201,7 @@ export function translateError(error: unknown, t: Translation) {
 
     if (code === "SERVER_UNAVAILABLE") return t.errors.serverUnavailable;
     if (code === "INVALID_CREDENTIALS") return t.errors.invalidCredentials;
+    if (code === "EMAIL_NOT_CONFIRMED") return t.errors.emailNotConfirmed;
     if (code === "USER_EXISTS") return t.errors.userExists;
     if (code === "HANDLE_TAKEN") return t.errors.handleTaken;
     if (code === "INVALID_HANDLE") return t.errors.invalidHandle;

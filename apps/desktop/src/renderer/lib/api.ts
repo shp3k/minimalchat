@@ -21,6 +21,10 @@ export class ApiRequestError extends Error {
   }
 }
 
+function isEmailNotConfirmedError(error: { message?: string } | null | undefined) {
+  return String(error?.message ?? "").toLowerCase().includes("email not confirmed");
+}
+
 type UserRow = {
   id: string;
   username: string;
@@ -245,7 +249,7 @@ export const api = {
       const login = await supabase.auth.signInWithPassword({ email: payload.email, password: payload.password });
 
       if (login.error) {
-        throw new ApiRequestError("Disable email confirmations in Supabase Auth settings, then try again.", "VALIDATION_ERROR");
+        throw new ApiRequestError(login.error.message, isEmailNotConfirmedError(login.error) ? "EMAIL_NOT_CONFIRMED" : "VALIDATION_ERROR");
       }
     }
 
@@ -259,7 +263,10 @@ export const api = {
     });
 
     if (auth.error || !auth.data.user) {
-      throw new ApiRequestError(auth.error?.message ?? "Invalid email or password", "INVALID_CREDENTIALS");
+      throw new ApiRequestError(
+        auth.error?.message ?? "Invalid email or password",
+        isEmailNotConfirmedError(auth.error) ? "EMAIL_NOT_CONFIRMED" : "INVALID_CREDENTIALS"
+      );
     }
 
     return { user: await ensureProfile(auth.data.user) };
