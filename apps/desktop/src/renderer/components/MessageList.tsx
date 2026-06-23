@@ -16,6 +16,7 @@ interface MessageListProps {
   onEditMessage: (message: MessageDTO, text: string) => Promise<void>;
   onDeleteMessage: (message: MessageDTO, mode: "me" | "all") => Promise<void>;
   onPinMessage: (message: MessageDTO) => Promise<void>;
+  onToggleReaction: (message: MessageDTO, emoji: string) => Promise<void>;
   onReplyMessage: (message: MessageDTO) => void;
   onPinnedConsumed: () => void;
   onOpenImage: (image: { url: string; name: string }) => void;
@@ -32,6 +33,7 @@ export function MessageList({
   onEditMessage,
   onDeleteMessage,
   onPinMessage,
+  onToggleReaction,
   onReplyMessage,
   onPinnedConsumed,
   onOpenImage
@@ -42,7 +44,7 @@ export function MessageList({
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [activePopup, setActivePopup] = useState<{
     messageId: string;
-    type: "menu" | "delete";
+    type: "menu" | "delete" | "reactions";
     placement: "top" | "bottom";
   } | null>(null);
 
@@ -65,10 +67,10 @@ export function MessageList({
     window.setTimeout(() => setHighlightedId((current) => (current === messageId ? null : current)), 2600);
   }
 
-  function openPopup(messageId: string, type: "menu" | "delete") {
+  function openPopup(messageId: string, type: "menu" | "delete" | "reactions") {
     const messageElement = messageRefs.current.get(messageId);
     const scrollArea = scrollAreaRef.current;
-    const estimatedPopupHeight = type === "delete" ? 176 : 190;
+    const estimatedPopupHeight = type === "delete" ? 176 : type === "reactions" ? 58 : 230;
     const placement =
       messageElement && scrollArea
         ? scrollArea.getBoundingClientRect().bottom - messageElement.getBoundingClientRect().bottom < estimatedPopupHeight + 12
@@ -143,6 +145,7 @@ export function MessageList({
               >
                 <MessageBubble
                   message={message}
+                  currentUserId={currentUserId}
                   mine={message.senderId === currentUserId}
                   highlighted={highlightedId === message.id}
                   popupType={activePopup?.messageId === message.id ? activePopup.type : null}
@@ -153,6 +156,7 @@ export function MessageList({
                   onEdit={onEditMessage}
                   onDelete={onDeleteMessage}
                   onPin={onPinMessage}
+                  onToggleReaction={onToggleReaction}
                   onReply={onReplyMessage}
                   onOpenReply={scrollToMessage}
                   onOpenImage={onOpenImage}

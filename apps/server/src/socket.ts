@@ -1,5 +1,5 @@
 import type { Server } from "socket.io";
-import type { MessageDTO, SendMessageDTO, TypingDTO } from "@minimalchat/shared";
+import type { MessageDTO, MessageReactionDTO, SendMessageDTO, TypingDTO } from "@minimalchat/shared";
 import { prisma } from "./db.js";
 import { toMessageDTO } from "./mappers.js";
 
@@ -26,6 +26,15 @@ export function emitMessageDelete(message: MessageDTO) {
   ioRef.to(message.senderId).to(message.receiverId).emit("message:delete", { id: message.id });
 }
 
+export function emitReactionUpdate(
+  message: Pick<MessageDTO, "senderId" | "receiverId">,
+  action: "added" | "removed",
+  reaction: MessageReactionDTO
+) {
+  if (!ioRef) return;
+  ioRef.to(message.senderId).to(message.receiverId).emit("reaction:update", { action, reaction });
+}
+
 async function markDeliveredMessages(userId: string) {
   const pending = await prisma.message.findMany({
     where: {
@@ -44,7 +53,7 @@ async function markDeliveredMessages(userId: string) {
   });
 
   const updated = await prisma.message.findMany({ where: { id: { in: ids } } });
-  updated.map(toMessageDTO).forEach(emitMessageUpdate);
+  updated.map((message) => toMessageDTO(message)).forEach(emitMessageUpdate);
 }
 
 function addSocket(userId: string, socketId: string) {

@@ -2,6 +2,7 @@ import type {
   AuthResponseDTO,
   LoginDTO,
   MessageDTO,
+  MessageReactionDTO,
   RegisterDTO,
   SendMessageDTO,
   UpdateProfileDTO,
@@ -11,6 +12,7 @@ import type {
 import { supabase } from "@/lib/supabase";
 
 const STORAGE_BUCKET = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET ?? "minimalchat-uploads";
+const ALLOWED_REACTIONS = new Set(["👍", "❤️", "😂", "😮", "😢", "🔥"]);
 
 export class ApiRequestError extends Error {
   code?: string;
@@ -87,6 +89,14 @@ type MessageRow = {
   isRead: boolean;
 };
 
+export type MessageReactionRow = {
+  id: string;
+  messageId: string;
+  userId: string;
+  emoji: string;
+  createdAt: string;
+};
+
 export function toUserDTO(row: UserRow, online = false): UserDTO {
   return {
     id: row.id,
@@ -101,7 +111,7 @@ export function toUserDTO(row: UserRow, online = false): UserDTO {
   };
 }
 
-export function toMessageDTO(row: MessageRow): MessageDTO {
+export function toMessageDTO(row: MessageRow, reactions: MessageReactionDTO[] = []): MessageDTO {
   return {
     id: row.id,
     senderId: row.senderId,
@@ -117,7 +127,18 @@ export function toMessageDTO(row: MessageRow): MessageDTO {
     readAt: row.readAt ? toUtcIsoString(row.readAt) : null,
     editedAt: row.editedAt ? toUtcIsoString(row.editedAt) : null,
     isPinned: row.isPinned,
-    isRead: row.isRead
+    isRead: row.isRead,
+    reactions
+  };
+}
+
+export function toMessageReactionDTO(row: MessageReactionRow): MessageReactionDTO {
+  return {
+    id: row.id,
+    messageId: row.messageId,
+    userId: row.userId,
+    emoji: row.emoji,
+    createdAt: toUtcIsoString(row.createdAt)
   };
 }
 
@@ -399,7 +420,27 @@ export const api = {
       throw new ApiRequestError(result.error.message, result.error.code);
     }
 
-    return { messages: (result.data ?? []).map(toMessageDTO) };
+    const rows = result.data ?? [];
+    const messageIds = rows.map((message) => message.id);
+    const reactionsResult = messageIds.length
+      ? await supabase.from("MessageReaction").select("*").in("messageId", messageIds).returns<MessageReactionRow[]>()
+      : { data: [], error: null };
+
+    if (reactionsResult.error) {
+      throw new ApiRequestError(reactionsResult.error.message, reactionsResult.error.code);
+    }
+
+    const reactionsByMessage = new Map<string, MessageReactionDTO[]>();
+    (reactionsResult.data ?? []).forEach((row) => {
+      const reaction = toMessageReactionDTO(row);
+      const reactions = reactionsByMessage.get(reaction.messageId) ?? [];
+      reactions.push(reaction);
+      reactionsByMessage.set(reaction.messageId, reactions);
+    });
+
+    return {
+      messages: rows.map((row) => toMessageDTO(row, reactionsByMessage.get(row.id) ?? []))
+    };
   },
 
   async sendMessage(payload: SendMessageDTO): Promise<{ message: MessageDTO }> {
@@ -478,6 +519,56 @@ export const api = {
     return { message: toMessageDTO(result.data) };
   },
 
+  async toggleReaction(
+    messageId: string,
+    currentUserId: string,
+    emoji: string
+  ): Promise<{ action: "added" | "removed"; reaction: MessageReactionDTO }> {
+    if (!ALLOWED_REACTIONS.has(emoji)) {
+      throw new ApiRequestError("Unsupported reaction", "VALIDATION_ERROR");
+    }
+
+    const existing = await supabase
+      .from("MessageReaction")
+      .select("*")
+      .eq("messageId", messageId)
+      .eq("userId", currentUserId)
+      .eq("emoji", emoji)
+      .maybeSingle<MessageReactionRow>();
+
+    if (existing.error) {
+      throw new ApiRequestError(existing.error.message, existing.error.code);
+    }
+
+    if (existing.data) {
+      const removed = toMessageReactionDTO(existing.data);
+      const result = await supabase.from("MessageReaction").delete().eq("id", existing.data.id);
+
+      if (result.error) {
+        throw new ApiRequestError(result.error.message, result.error.code);
+      }
+
+      return { action: "removed", reaction: removed };
+    }
+
+    const result = await supabase
+      .from("MessageReaction")
+      .insert({
+        id: crypto.randomUUID(),
+        messageId,
+        userId: currentUserId,
+        emoji
+      })
+      .select("*")
+      .single<MessageReactionRow>();
+
+    if (result.error) {
+      throw new ApiRequestError(result.error.message, result.error.code);
+    }
+
+    return { action: "added", reaction: toMessageReactionDTO(result.data) };
+  },
+
   async deleteMessage(messageId: string, currentUserId: string, mode: "me" | "all") {
     if (mode === "me") {
       const existing = await supabase.from("Message").select("*").eq("id", messageId).single<MessageRow>();
@@ -520,7 +611,7 @@ export const api = {
       throw new ApiRequestError(result.error.message, result.error.code);
     }
 
-    return { messages: (result.data ?? []).map(toMessageDTO) };
+    return { messages: (result.data ?? []).map((row) => toMessageDTO(row)) };
   },
 
   async markMessagesRead(currentUserId: string, otherUserId: string): Promise<{ messages: MessageDTO[] }> {
@@ -538,6 +629,6 @@ export const api = {
       throw new ApiRequestError(result.error.message, result.error.code);
     }
 
-    return { messages: (result.data ?? []).map(toMessageDTO) };
+    return { messages: (result.data ?? []).map((row) => toMessageDTO(row)) };
   }
 };

@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MessageDTO, OnlineUsersDTO, TypingDTO, UserDTO, UserListItemDTO } from "@minimalchat/shared";
+import type {
+  MessageDTO,
+  MessageReactionDTO,
+  OnlineUsersDTO,
+  TypingDTO,
+  UserDTO,
+  UserListItemDTO
+} from "@minimalchat/shared";
 import { AnimatePresence, motion } from "motion/react";
 import { Wifi, WifiOff } from "lucide-react";
 import { ChatInput } from "@/components/ChatInput";
@@ -195,7 +202,9 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
       });
     });
     chatSocket.on("message:update", (message: MessageDTO) => {
-      setMessages((current) => current.map((item) => (item.id === message.id ? message : item)));
+      setMessages((current) =>
+        current.map((item) => (item.id === message.id ? { ...message, reactions: item.reactions } : item))
+      );
       setUsers((current) =>
         current.map((item) =>
           item.lastMessage?.id === message.id
@@ -214,6 +223,12 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
       );
       void loadUsers();
     });
+    chatSocket.on(
+      "reaction:update",
+      (payload: { action: "added" | "removed"; reaction: MessageReactionDTO }) => {
+        setMessages((current) => applyReactionChange(current, payload.action, payload.reaction));
+      }
+    );
     chatSocket.on("typing", (payload: TypingDTO) => {
       if (payload.receiverId !== user.id || payload.senderId === user.id) return;
 
@@ -302,7 +317,10 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
       if (!result.messages.length) return;
 
       setMessages((current) =>
-        current.map((message) => result.messages.find((updated) => updated.id === message.id) ?? message)
+        current.map((message) => {
+          const updated = result.messages.find((item) => item.id === message.id);
+          return updated ? { ...updated, reactions: message.reactions } : message;
+        })
       );
       setUsers((current) =>
         current.map((item) => {
@@ -479,7 +497,11 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   async function editMessage(message: MessageDTO, text: string) {
     try {
       const result = await api.editMessage(message.id, user.id, text);
-      setMessages((current) => current.map((item) => (item.id === result.message.id ? result.message : item)));
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === result.message.id ? { ...result.message, reactions: item.reactions } : item
+        )
+      );
       setUsers((current) =>
         current.map((item) =>
           item.lastMessage?.id === result.message.id ? { ...item, lastMessage: result.message } : item
@@ -506,7 +528,11 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   async function pinMessage(message: MessageDTO) {
     try {
       const result = await api.pinMessage(message.id, user.id, !message.isPinned);
-      setMessages((current) => current.map((item) => (item.id === result.message.id ? result.message : item)));
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === result.message.id ? { ...result.message, reactions: item.reactions } : item
+        )
+      );
     } catch (caught) {
       setError(translateError(caught, t));
     }
@@ -524,6 +550,15 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
       setProfileError(translateError(caught, t));
     } finally {
       setProfileLoading(false);
+    }
+  }
+
+  async function toggleReaction(message: MessageDTO, emoji: string) {
+    try {
+      const result = await api.toggleReaction(message.id, user.id, emoji);
+      setMessages((current) => applyReactionChange(current, result.action, result.reaction));
+    } catch (caught) {
+      setError(translateError(caught, t));
     }
   }
 
@@ -657,6 +692,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                 onEditMessage={editMessage}
                 onDeleteMessage={deleteMessage}
                 onPinMessage={pinMessage}
+                onToggleReaction={toggleReaction}
                 onReplyMessage={setReplyTarget}
                 onPinnedConsumed={showNextPinnedMessage}
                 onOpenImage={setImagePreview}
@@ -759,4 +795,30 @@ function getNotificationBody(message: MessageDTO, t: ReturnType<typeof getTransl
   }
 
   return t.chat.originalMessage;
+}
+
+function applyReactionChange(
+  messages: MessageDTO[],
+  action: "added" | "removed",
+  reaction: MessageReactionDTO
+) {
+  return messages.map((message) => {
+    if (message.id !== reaction.messageId) return message;
+
+    if (action === "removed") {
+      return {
+        ...message,
+        reactions: message.reactions.filter((item) => item.id !== reaction.id)
+      };
+    }
+
+    if (message.reactions.some((item) => item.id === reaction.id)) {
+      return message;
+    }
+
+    return {
+      ...message,
+      reactions: [...message.reactions, reaction]
+    };
+  });
 }

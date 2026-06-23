@@ -1,6 +1,6 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { MessageDTO, OnlineUsersDTO, SendMessageDTO, TypingDTO } from "@minimalchat/shared";
-import { api, toMessageDTO, toUserDTO } from "@/lib/api";
+import { api, toMessageDTO, toMessageReactionDTO, toUserDTO } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 
 type Handler = (...args: any[]) => void;
@@ -40,6 +40,18 @@ export class SupabaseChatSocket {
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "Message" }, (payload) => {
         this.emitLocal("message:delete", { id: (payload.old as PopupPayload).id });
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "MessageReaction" }, (payload) => {
+        this.emitLocal("reaction:update", {
+          action: "added",
+          reaction: toMessageReactionDTO(payload.new as any)
+        });
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "MessageReaction" }, (payload) => {
+        this.emitLocal("reaction:update", {
+          action: "removed",
+          reaction: toMessageReactionDTO(payload.old as any)
+        });
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "User" }, (payload) => {
         this.emitLocal("user:update", toUserDTO(payload.new as any));

@@ -7,8 +7,8 @@ import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { config } from "../config.js";
 import { prisma } from "../db.js";
-import { toMessageDTO } from "../mappers.js";
-import { emitMessage, emitMessageDelete, emitMessageUpdate, getOnlineUserIds } from "../socket.js";
+import { toMessageDTO, toMessageReactionDTO } from "../mappers.js";
+import { emitMessage, emitMessageDelete, emitMessageUpdate, emitReactionUpdate, getOnlineUserIds } from "../socket.js";
 import { HttpError } from "../utils/httpError.js";
 
 const router = Router();
@@ -59,6 +59,11 @@ const readSchema = z.object({
   otherUserId: z.string().min(1)
 });
 
+const reactionSchema = z.object({
+  currentUserId: z.string().min(1),
+  emoji: z.enum(["👍", "❤️", "😂", "😮", "😢", "🔥"])
+});
+
 router.get("/:userId", async (req, res, next) => {
   try {
     const currentUserId = String(req.query.currentUserId ?? "");
@@ -77,10 +82,11 @@ router.get("/:userId", async (req, res, next) => {
           { senderId: otherUserId, receiverId: currentUserId, hiddenForReceiver: false }
         ]
       },
-      orderBy: { sentAt: "asc" }
+      orderBy: { sentAt: "asc" },
+      include: { reactions: true }
     });
 
-    res.json({ messages: messages.map(toMessageDTO) });
+    res.json({ messages: messages.map((message) => toMessageDTO(message, message.reactions)) });
   } catch (error) {
     next(error);
   }
@@ -190,6 +196,52 @@ router.patch("/:messageId/pin", async (req, res, next) => {
   }
 });
 
+router.post("/:messageId/reactions", async (req, res, next) => {
+  try {
+    const data = reactionSchema.parse(req.body);
+    const message = await prisma.message.findUnique({ where: { id: req.params.messageId } });
+
+    if (!message) {
+      throw new HttpError(404, "Message not found", "MESSAGE_NOT_FOUND");
+    }
+
+    if (!isParticipant(message, data.currentUserId)) {
+      throw new HttpError(403, "You can react only to chat messages", "FORBIDDEN");
+    }
+
+    const existing = await prisma.messageReaction.findUnique({
+      where: {
+        messageId_userId_emoji: {
+          messageId: message.id,
+          userId: data.currentUserId,
+          emoji: data.emoji
+        }
+      }
+    });
+
+    if (existing) {
+      await prisma.messageReaction.delete({ where: { id: existing.id } });
+      const reaction = toMessageReactionDTO(existing);
+      emitReactionUpdate(toMessageDTO(message), "removed", reaction);
+      res.json({ action: "removed", reaction });
+      return;
+    }
+
+    const created = await prisma.messageReaction.create({
+      data: {
+        messageId: message.id,
+        userId: data.currentUserId,
+        emoji: data.emoji
+      }
+    });
+    const reaction = toMessageReactionDTO(created);
+    emitReactionUpdate(toMessageDTO(message), "added", reaction);
+    res.status(201).json({ action: "added", reaction });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.delete("/:messageId", async (req, res, next) => {
   try {
     const data = actionSchema.parse(req.body);
@@ -252,7 +304,7 @@ async function markChatRead(currentUserId: string, otherUserId: string) {
   });
 
   const updated = await prisma.message.findMany({ where: { id: { in: ids } } });
-  const dtos = updated.map(toMessageDTO);
+  const dtos = updated.map((message) => toMessageDTO(message));
   dtos.forEach(emitMessageUpdate);
 
   return dtos;

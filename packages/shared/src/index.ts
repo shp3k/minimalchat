@@ -31,6 +31,15 @@ export interface MessageDTO {
   editedAt: string | null;
   isPinned: boolean;
   isRead: boolean;
+  reactions: MessageReactionDTO[];
+}
+
+export interface MessageReactionDTO {
+  id: string;
+  messageId: string;
+  userId: string;
+  emoji: string;
+  createdAt: string;
 }
 
 export interface AuthResponseDTO {

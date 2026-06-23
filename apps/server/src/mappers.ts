@@ -1,5 +1,5 @@
-import type { Message, User } from "@prisma/client";
-import type { MessageDTO, UserDTO } from "@minimalchat/shared";
+import type { Message, MessageReaction, User } from "@prisma/client";
+import type { MessageDTO, MessageReactionDTO, UserDTO } from "@minimalchat/shared";
 
 export function toUserDTO(user: User, online = false): UserDTO {
   return {
@@ -15,7 +15,7 @@ export function toUserDTO(user: User, online = false): UserDTO {
   };
 }
 
-export function toMessageDTO(message: Message): MessageDTO {
+export function toMessageDTO(message: Message, reactions: MessageReaction[] = []): MessageDTO {
   return {
     id: message.id,
     senderId: message.senderId,
@@ -31,6 +31,17 @@ export function toMessageDTO(message: Message): MessageDTO {
     readAt: message.readAt ? message.readAt.toISOString() : message.isRead ? message.sentAt.toISOString() : null,
     editedAt: message.editedAt ? message.editedAt.toISOString() : null,
     isPinned: message.isPinned,
-    isRead: message.isRead
+    isRead: message.isRead,
+    reactions: reactions.map(toMessageReactionDTO)
+  };
+}
+
+export function toMessageReactionDTO(reaction: MessageReaction): MessageReactionDTO {
+  return {
+    id: reaction.id,
+    messageId: reaction.messageId,
+    userId: reaction.userId,
+    emoji: reaction.emoji,
+    createdAt: reaction.createdAt.toISOString()
   };
 }

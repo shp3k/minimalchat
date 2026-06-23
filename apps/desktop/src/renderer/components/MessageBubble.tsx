@@ -1,30 +1,48 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { MessageDTO } from "@minimalchat/shared";
-import { Check, CheckCheck, Copy, Download, ExternalLink, FileIcon, Pause, Pencil, Pin, Play, Reply, Trash2, X } from "lucide-react";
+import {
+  Check,
+  CheckCheck,
+  Copy,
+  Download,
+  ExternalLink,
+  FileIcon,
+  Pause,
+  Pencil,
+  Pin,
+  Play,
+  Reply,
+  SmilePlus,
+  Trash2,
+  X
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import type { Translation } from "@/lib/i18n";
 import { cn, formatMessageTime } from "@/lib/utils";
 
 interface MessageBubbleProps {
   message: MessageDTO;
+  currentUserId: string;
   mine: boolean;
   t: Translation;
   highlighted?: boolean;
-  popupType: "menu" | "delete" | null;
+  popupType: "menu" | "delete" | "reactions" | null;
   popupPlacement: "top" | "bottom";
   replyToMessage: MessageDTO | null;
   replyToAuthorName: string;
   onEdit: (message: MessageDTO, text: string) => Promise<void>;
   onDelete: (message: MessageDTO, mode: "me" | "all") => Promise<void>;
   onPin: (message: MessageDTO) => Promise<void>;
+  onToggleReaction: (message: MessageDTO, emoji: string) => Promise<void>;
   onReply: (message: MessageDTO) => void;
   onOpenReply: (messageId: string) => void;
   onOpenImage: (image: { url: string; name: string }) => void;
-  onPopupChange: (type: "menu" | "delete" | null) => void;
+  onPopupChange: (type: "menu" | "delete" | "reactions" | null) => void;
 }
 
 export function MessageBubble({
   message,
+  currentUserId,
   mine,
   t,
   highlighted,
@@ -35,6 +53,7 @@ export function MessageBubble({
   onEdit,
   onDelete,
   onPin,
+  onToggleReaction,
   onReply,
   onOpenReply,
   onOpenImage,
@@ -69,6 +88,7 @@ export function MessageBubble({
       transition={{ duration: 0.16 }}
       className={cn("relative flex", mine ? "justify-end" : "justify-start")}
     >
+      <div className="group relative w-fit max-w-[min(520px,64%)]">
       <div
         onContextMenu={(event) => {
           if (editing) return;
@@ -76,7 +96,7 @@ export function MessageBubble({
           onPopupChange(popupType === "menu" ? null : "menu");
         }}
         className={cn(
-          "relative max-w-[min(520px,64%)] rounded-2xl border px-3.5 py-2.5 shadow-[0_12px_34px_rgba(0,0,0,0.24)]",
+          "relative max-w-full rounded-2xl border px-3.5 py-2.5 shadow-[0_12px_34px_rgba(0,0,0,0.24)]",
           mine
             ? "rounded-br-md border-accent/25 bg-accent text-white"
             : "rounded-bl-md border-borderSoft bg-panel2 text-primaryText",
@@ -94,6 +114,12 @@ export function MessageBubble({
               placement={popupPlacement}
               pinned={message.isPinned}
               canCopy={!isVoice && Boolean(message.text || attachmentUrl)}
+              currentUserId={currentUserId}
+              reactions={message.reactions}
+              onReaction={(emoji) => {
+                void onToggleReaction(message, emoji);
+                onPopupChange(null);
+              }}
               onReply={() => {
                 onReply(message);
                 onPopupChange(null);
@@ -113,6 +139,18 @@ export function MessageBubble({
               }}
               onDelete={() => {
                 onPopupChange("delete");
+              }}
+            />
+          ) : null}
+          {popupType === "reactions" && !editing ? (
+            <ReactionPicker
+              key="reaction-picker"
+              mine={mine}
+              placement={popupPlacement}
+              label={t.chat.addReaction}
+              onReaction={(emoji) => {
+                void onToggleReaction(message, emoji);
+                onPopupChange(null);
               }}
             />
           ) : null}
@@ -212,10 +250,36 @@ export function MessageBubble({
           </span>
           {mine ? <MessageStatus message={message} /> : null}
         </div>
+        {message.reactions.length ? (
+          <ReactionSummary
+            reactions={message.reactions}
+            currentUserId={currentUserId}
+            mine={mine}
+            onReaction={(emoji) => void onToggleReaction(message, emoji)}
+          />
+        ) : null}
+      </div>
+      {!editing ? (
+        <button
+          type="button"
+          aria-label={t.chat.addReaction}
+          title={t.chat.addReaction}
+          onClick={() => onPopupChange(popupType === "reactions" ? null : "reactions")}
+          className={cn(
+            "absolute top-1/2 z-10 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-xl border border-borderSoft bg-panel/95 text-secondaryText opacity-0 shadow-lg backdrop-blur transition hover:border-accent/35 hover:text-primaryText group-hover:opacity-100",
+            popupType === "reactions" && "opacity-100",
+            mine ? "right-full mr-2" : "left-full ml-2"
+          )}
+        >
+          <SmilePlus size={16} />
+        </button>
+      ) : null}
       </div>
     </motion.div>
   );
 }
+
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🔥"] as const;
 
 function MessageStatus({ message }: { message: MessageDTO }) {
   if (message.readAt || message.isRead) {
@@ -276,6 +340,9 @@ interface MessageMenuProps {
   placement: "top" | "bottom";
   pinned: boolean;
   canCopy: boolean;
+  currentUserId: string;
+  reactions: MessageDTO["reactions"];
+  onReaction: (emoji: string) => void;
   onReply: () => void;
   onEdit: () => void;
   onCopy: () => void;
@@ -283,7 +350,21 @@ interface MessageMenuProps {
   onDelete: () => void | Promise<void>;
 }
 
-function MessageMenu({ t, mine, placement, pinned, canCopy, onReply, onEdit, onCopy, onPin, onDelete }: MessageMenuProps) {
+function MessageMenu({
+  t,
+  mine,
+  placement,
+  pinned,
+  canCopy,
+  currentUserId,
+  reactions,
+  onReaction,
+  onReply,
+  onEdit,
+  onCopy,
+  onPin,
+  onDelete
+}: MessageMenuProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: placement === "top" ? 8 : -8, scale: 0.96 }}
@@ -291,18 +372,133 @@ function MessageMenu({ t, mine, placement, pinned, canCopy, onReply, onEdit, onC
       exit={{ opacity: 0, y: placement === "top" ? 6 : -6, scale: 0.97 }}
       transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
       className={cn(
-        "absolute z-20 w-44 overflow-hidden rounded-2xl border border-borderSoft bg-panel/95 p-1 text-primaryText shadow-glow backdrop-blur",
+        "absolute z-20 w-52 overflow-hidden rounded-2xl border border-borderSoft bg-panel/95 p-1 text-primaryText shadow-glow backdrop-blur",
         placement === "top" ? "bottom-full mb-2" : "top-full mt-2",
         mine ? "right-0" : "left-0"
       )}
       onClick={(event) => event.stopPropagation()}
     >
+      <div className="mb-1 grid grid-cols-6 gap-0.5 border-b border-borderSoft p-1 pb-2">
+        {QUICK_REACTIONS.map((emoji) => (
+          <EmojiButton
+            key={emoji}
+            emoji={emoji}
+            active={reactions.some((reaction) => reaction.emoji === emoji && reaction.userId === currentUserId)}
+            onClick={() => onReaction(emoji)}
+          />
+        ))}
+      </div>
       <MenuButton icon={<Reply size={15} />} label={t.chat.replyMessage} onClick={onReply} />
       {mine ? <MenuButton icon={<Pencil size={15} />} label={t.chat.editMessage} onClick={onEdit} /> : null}
       <MenuButton icon={<Copy size={15} />} label={t.chat.copyMessage} onClick={onCopy} disabled={!canCopy} />
       <MenuButton icon={<Pin size={15} />} label={pinned ? t.chat.unpinMessage : t.chat.pinMessage} onClick={onPin} />
       <MenuButton danger icon={<Trash2 size={15} />} label={t.chat.deleteMessage} onClick={onDelete} />
     </motion.div>
+  );
+}
+
+function ReactionPicker({
+  mine,
+  placement,
+  label,
+  onReaction
+}: {
+  mine: boolean;
+  placement: "top" | "bottom";
+  label: string;
+  onReaction: (emoji: string) => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: placement === "top" ? 7 : -7, scale: 0.94 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: placement === "top" ? 5 : -5, scale: 0.96 }}
+      transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
+      aria-label={label}
+      className={cn(
+        "absolute z-30 flex gap-1 rounded-2xl border border-borderSoft bg-panel/95 p-1.5 shadow-glow backdrop-blur",
+        placement === "top" ? "bottom-full mb-2" : "top-full mt-2",
+        mine ? "right-0" : "left-0"
+      )}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {QUICK_REACTIONS.map((emoji) => (
+        <EmojiButton key={emoji} emoji={emoji} onClick={() => onReaction(emoji)} />
+      ))}
+    </motion.div>
+  );
+}
+
+function EmojiButton({
+  emoji,
+  active,
+  onClick
+}: {
+  emoji: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "grid h-8 w-8 place-items-center rounded-xl text-lg transition hover:bg-white/[0.09] hover:scale-110",
+        active && "bg-accent/25 ring-1 ring-accent/50"
+      )}
+      onClick={onClick}
+    >
+      {emoji}
+    </button>
+  );
+}
+
+function ReactionSummary({
+  reactions,
+  currentUserId,
+  mine,
+  onReaction
+}: {
+  reactions: MessageDTO["reactions"];
+  currentUserId: string;
+  mine: boolean;
+  onReaction: (emoji: string) => void;
+}) {
+  const groups = QUICK_REACTIONS.map((emoji) => {
+    const matches = reactions.filter((reaction) => reaction.emoji === emoji);
+    return {
+      emoji,
+      count: matches.length,
+      active: matches.some((reaction) => reaction.userId === currentUserId)
+    };
+  }).filter((group) => group.count > 0);
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-1">
+      {groups.map((group) => (
+        <motion.button
+          layout
+          key={group.emoji}
+          type="button"
+          initial={{ opacity: 0, scale: 0.85 }}
+          animate={{ opacity: 1, scale: 1 }}
+          whileTap={{ scale: 0.92 }}
+          onClick={() => onReaction(group.emoji)}
+          className={cn(
+            "flex h-7 items-center gap-1 rounded-xl border px-2 text-sm transition",
+            group.active
+              ? mine
+                ? "border-white/35 bg-white/20 text-white"
+                : "border-accent/50 bg-accent/16 text-primaryText"
+              : mine
+                ? "border-white/16 bg-white/10 text-white/85 hover:bg-white/16"
+                : "border-borderSoft bg-background/45 text-primaryText hover:bg-white/[0.06]"
+          )}
+        >
+          <span>{group.emoji}</span>
+          <span className="text-[11px] font-semibold">{group.count}</span>
+        </motion.button>
+      ))}
+    </div>
   );
 }
 
