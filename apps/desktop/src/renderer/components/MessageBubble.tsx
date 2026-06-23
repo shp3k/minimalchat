@@ -92,7 +92,7 @@ export function MessageBubble({
                 onPopupChange(null);
               }}
               onCopy={() => {
-                void navigator.clipboard.writeText(getCopyPayload(message, attachmentUrl));
+                void copyToClipboard(getCopyPayload(message, attachmentUrl));
                 onPopupChange(null);
               }}
               onPin={async () => {
@@ -491,6 +491,15 @@ function getAttachmentUrl(value: string | null) {
 
 function getCopyPayload(message: MessageDTO, attachmentUrl: string | null) {
   return [message.text, attachmentUrl].filter(Boolean).join("\n");
+}
+
+async function copyToClipboard(value: string) {
+  if (window.minimalChatClipboard) {
+    window.minimalChatClipboard.writeText(value);
+    return;
+  }
+
+  await navigator.clipboard.writeText(value);
 }
 
 async function openExternalUrl(url: string) {

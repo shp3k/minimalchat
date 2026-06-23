@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { clipboard, contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("minimalChatWindow", {
   minimize: () => ipcRenderer.invoke("window:minimize"),
@@ -8,4 +8,9 @@ contextBridge.exposeInMainWorld("minimalChatWindow", {
 
 contextBridge.exposeInMainWorld("minimalChatApp", {
   openExternal: (url) => ipcRenderer.invoke("app:open-external", url)
+});
+
+contextBridge.exposeInMainWorld("minimalChatClipboard", {
+  readText: () => clipboard.readText(),
+  writeText: (value) => clipboard.writeText(String(value ?? ""))
 });

@@ -10,5 +10,9 @@ declare global {
     minimalChatApp?: {
       openExternal: (url: string) => Promise<void>;
     };
+    minimalChatClipboard?: {
+      readText: () => string;
+      writeText: (value: string) => void;
+    };
   }
 }

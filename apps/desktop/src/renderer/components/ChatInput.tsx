@@ -1,6 +1,6 @@
-import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
-import { FileIcon, Mic, Paperclip, SendHorizonal, Trash2, X } from "lucide-react";
-import { motion } from "motion/react";
+import { ChangeEvent, FormEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
+import { ClipboardPaste, FileIcon, Mic, Paperclip, SendHorizonal, Trash2, X } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { Translation } from "@/lib/i18n";
@@ -16,9 +16,12 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputBoxRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
+  const [pasteMenu, setPasteMenu] = useState<{ x: number; y: number; canPaste: boolean } | null>(null);
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -33,6 +36,25 @@ export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
       stopRecordingStream();
     };
   }, []);
+
+  useEffect(() => {
+    if (!pasteMenu) return;
+
+    const close = () => setPasteMenu(null);
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        close();
+      }
+    };
+
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [pasteMenu]);
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
@@ -72,6 +94,40 @@ export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
       event.preventDefault();
       void submit();
     }
+  }
+
+  async function openPasteMenu(event: ReactMouseEvent<HTMLTextAreaElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const rect = inputBoxRef.current?.getBoundingClientRect();
+    const clipboardText = readClipboardText().trim();
+    const rawX = rect ? event.clientX - rect.left : 16;
+    const rawY = rect ? event.clientY - rect.top : 16;
+
+    setPasteMenu({
+      x: Math.min(Math.max(rawX, 8), Math.max(8, (rect?.width ?? 180) - 168)),
+      y: Math.max(rawY - 46, 8),
+      canPaste: Boolean(clipboardText)
+    });
+  }
+
+  function pasteFromClipboard() {
+    const value = readClipboardText();
+    if (!value) return;
+
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? text.length;
+    const end = textarea?.selectionEnd ?? text.length;
+    const nextText = `${text.slice(0, start)}${value}${text.slice(end)}`.slice(0, 1000);
+    const nextCursor = Math.min(start + value.length, nextText.length);
+
+    setText(nextText);
+    setPasteMenu(null);
+    window.requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(nextCursor, nextCursor);
+    });
   }
 
   async function startRecording() {
@@ -196,7 +252,33 @@ export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
 
   return (
     <form onSubmit={submit} className="border-t border-borderSoft bg-background/70 p-4">
-      <div className="rounded-2xl border border-borderSoft bg-panel p-2 shadow-[0_12px_34px_rgba(0,0,0,0.24)]">
+      <div ref={inputBoxRef} className="relative rounded-2xl border border-borderSoft bg-panel p-2 shadow-[0_12px_34px_rgba(0,0,0,0.24)]">
+        <AnimatePresence>
+          {pasteMenu ? (
+            <motion.div
+              initial={{ opacity: 0, y: -6, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -4, scale: 0.97 }}
+              transition={{ duration: 0.13, ease: [0.16, 1, 0.3, 1] }}
+              className="absolute z-40 w-40 overflow-hidden rounded-2xl border border-borderSoft bg-panel/95 p-1 text-primaryText shadow-glow backdrop-blur"
+              style={{
+                left: pasteMenu.x,
+                top: pasteMenu.y
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                disabled={!pasteMenu.canPaste || disabled}
+                className="flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-sm transition disabled:cursor-not-allowed disabled:text-secondaryText/45 enabled:hover:bg-white/[0.07]"
+                onClick={pasteFromClipboard}
+              >
+                <ClipboardPaste size={15} />
+                {t.chat.pasteMessage}
+              </button>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
         {file ? (
           <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-borderSoft bg-background px-3 py-2">
             <div className="flex min-w-0 items-center gap-2 text-sm text-primaryText">
@@ -231,12 +313,14 @@ export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
             <Paperclip size={18} />
           </Button>
           <Textarea
+            ref={textareaRef}
             value={text}
             maxLength={1000}
             rows={1}
             disabled={disabled}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={handleKeyDown}
+            onContextMenu={openPasteMenu}
             placeholder={disabled ? t.chat.connecting : t.chat.writeMessage}
             className="max-h-32 min-h-[44px] border-0 bg-transparent py-2.5 focus:ring-0"
           />
@@ -267,6 +351,14 @@ export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
       </div>
     </form>
   );
+}
+
+function readClipboardText() {
+  if (window.minimalChatClipboard) {
+    return window.minimalChatClipboard.readText();
+  }
+
+  return "";
 }
 
 function getRecorderMimeType() {
