@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { Avatar } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import type { Translation } from "@/lib/i18n";
+import { getPresenceText } from "@/lib/presence";
 import { cn, formatMessageTime } from "@/lib/utils";
 
 interface UserListProps {
@@ -80,6 +81,7 @@ function UserCard({
   onSelect: (user: UserListItemDTO) => void;
 }) {
   const hasUnread = !selected && user.unreadCount > 0;
+  const fallbackPreview = user.lastMessage ? preview(user.lastMessage, t) : getPresenceText(user, t);
 
   return (
     <motion.button
@@ -109,7 +111,7 @@ function UserCard({
         </div>
         <div className="mt-1 flex items-center gap-2">
           <p className={cn("min-w-0 flex-1 truncate text-xs", hasUnread ? "font-semibold text-primaryText" : "text-secondaryText")}>
-            {user.lastMessage ? preview(user.lastMessage, t) : `@${user.handle ?? user.id}`}
+            {fallbackPreview}
           </p>
           {hasUnread ? (
             <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-accent px-1.5 text-[11px] font-bold leading-none text-white shadow-accent">

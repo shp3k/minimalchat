@@ -14,6 +14,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { api } from "@/lib/api";
 import type { Language } from "@/lib/i18n";
 import { getTranslation, translateError } from "@/lib/i18n";
+import { getPresenceText } from "@/lib/presence";
 import { clearStoredUser } from "@/lib/storage";
 import { createChatSocket, sendSocketMessage, type ChatSocket } from "@/lib/socket";
 
@@ -569,14 +570,14 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                         </motion.p>
                       ) : (
                         <motion.p
-                          key="handle"
+                          key="presence"
                           initial={{ opacity: 0, y: 4 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -4 }}
                           transition={{ duration: 0.14 }}
                           className="mt-1 text-xs text-secondaryText"
                         >
-                          @{selectedUser.handle ?? selectedUser.id}
+                          {selectedUserPresenceText}
                         </motion.p>
                       )}
                     </AnimatePresence>
@@ -677,33 +678,6 @@ function bumpUserWithMessage(
 
 function getMessageAuthorName(message: MessageDTO, currentUser: UserDTO, selectedUser: UserDTO) {
   return message.senderId === currentUser.id ? currentUser.username : selectedUser.username;
-}
-
-function getPresenceText(user: UserDTO, t: ReturnType<typeof getTranslation>) {
-  if (user.online) {
-    return t.chat.online;
-  }
-
-  if (!user.lastSeenAt) {
-    return t.chat.lastSeenRecently;
-  }
-
-  const lastSeenDate = new Date(user.lastSeenAt);
-
-  if (Number.isNaN(lastSeenDate.getTime())) {
-    return t.chat.lastSeenRecently;
-  }
-
-  const minutesSinceLastSeen = (Date.now() - lastSeenDate.getTime()) / 60000;
-
-  if (minutesSinceLastSeen < 5) {
-    return t.chat.lastSeenRecently;
-  }
-
-  return `${t.chat.lastSeenAt} ${lastSeenDate.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit"
-  })}`;
 }
 
 function getNotificationBody(message: MessageDTO, t: ReturnType<typeof getTranslation>) {
