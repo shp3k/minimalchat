@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Notification, clipboard, ipcMain, session, shell } = require("electron");
+const { app, BrowserWindow, Notification, clipboard, ipcMain, nativeImage, session, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -187,6 +187,36 @@ function shouldShowMessageNotification(force) {
   return mainWindow.isMinimized() || !mainWindow.isFocused();
 }
 
+function setUnreadBadge(count) {
+  const unreadCount = Math.max(0, Math.min(Number(count) || 0, 999));
+
+  app.setBadgeCount(unreadCount);
+
+  if (process.platform !== "win32" || !mainWindow) return;
+
+  if (unreadCount === 0) {
+    mainWindow.setOverlayIcon(null, "");
+    return;
+  }
+
+  mainWindow.setOverlayIcon(
+    nativeImage.createFromDataURL(createBadgeIconDataUrl(unreadCount)),
+    `${unreadCount} unread messages`
+  );
+}
+
+function createBadgeIconDataUrl(count) {
+  const label = count > 99 ? "99+" : String(count);
+  const fontSize = label.length > 2 ? 8 : label.length > 1 ? 9 : 11;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+    <circle cx="16" cy="16" r="15" fill="#7C3AED"/>
+    <circle cx="16" cy="16" r="15" fill="none" stroke="white" stroke-opacity=".95" stroke-width="2"/>
+    <text x="16" y="20" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="700" fill="white">${label}</text>
+  </svg>`;
+
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+}
+
 app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "media");
@@ -259,4 +289,7 @@ ipcMain.handle("notification:show-message", (_event, payload) => {
 
   notification.show();
   return true;
+});
+ipcMain.handle("app:set-unread-count", (_event, count) => {
+  setUnreadBadge(count);
 });

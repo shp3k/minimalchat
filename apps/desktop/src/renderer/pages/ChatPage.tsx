@@ -45,10 +45,24 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const selectedUserRef = useRef<UserListItemDTO | null>(null);
   const usersRef = useRef<UserListItemDTO[]>([]);
   const t = getTranslation(language);
+  const totalUnreadCount = useMemo(
+    () => users.reduce((sum, item) => sum + Math.max(0, item.unreadCount), 0),
+    [users]
+  );
 
   useEffect(() => {
     selectedUserRef.current = selectedUser;
   }, [selectedUser]);
+
+  useEffect(() => {
+    void window.minimalChatApp?.setUnreadCount?.(totalUnreadCount);
+  }, [totalUnreadCount]);
+
+  useEffect(() => {
+    return () => {
+      void window.minimalChatApp?.setUnreadCount?.(0);
+    };
+  }, []);
 
   useEffect(() => {
     usersRef.current = users;
@@ -450,7 +464,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
   return (
     <main className="flex min-h-0 flex-1 overflow-hidden bg-background">
-      <Sidebar user={user} onProfileOpen={() => setProfileOpen(true)} />
+      <Sidebar user={user} unreadCount={totalUnreadCount} onProfileOpen={() => setProfileOpen(true)} />
       <UserList
         users={users}
         selectedUserId={selectedUser?.id}
