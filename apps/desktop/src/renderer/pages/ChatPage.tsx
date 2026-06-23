@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { MessageDTO, OnlineUsersDTO, UserDTO, UserListItemDTO } from "@minimalchat/shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MessageDTO, OnlineUsersDTO, TypingDTO, UserDTO, UserListItemDTO } from "@minimalchat/shared";
 import { AnimatePresence, motion } from "motion/react";
 import { Wifi, WifiOff } from "lucide-react";
 import { ChatInput } from "@/components/ChatInput";
@@ -39,11 +39,13 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [pinnedCursor, setPinnedCursor] = useState(0);
+  const [typingUserIds, setTypingUserIds] = useState<Record<string, boolean>>({});
   const [socket, setSocket] = useState<ChatSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState("");
   const selectedUserRef = useRef<UserListItemDTO | null>(null);
   const usersRef = useRef<UserListItemDTO[]>([]);
+  const typingTimersRef = useRef<Record<string, number>>({});
   const t = getTranslation(language);
   const totalUnreadCount = useMemo(
     () => users.reduce((sum, item) => sum + Math.max(0, item.unreadCount), 0),
@@ -67,6 +69,13 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   useEffect(() => {
     usersRef.current = users;
   }, [users]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(typingTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+      typingTimersRef.current = {};
+    };
+  }, []);
 
   useEffect(() => {
     setPinnedCursor(0);
@@ -181,6 +190,11 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
         current.map((item) => (item.lastMessage?.id === payload.id ? { ...item, lastMessage: null } : item))
       );
       void loadUsers();
+    });
+    chatSocket.on("typing", (payload: TypingDTO) => {
+      if (payload.receiverId !== user.id || payload.senderId === user.id) return;
+
+      updateTypingStatus(payload.senderId, payload.isTyping);
     });
 
     const setOnline = (payload: OnlineUsersDTO) => {
@@ -378,6 +392,43 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     }
   }
 
+  const sendTypingState = useCallback(
+    (isTyping: boolean) => {
+      if (!selectedUser) return;
+
+      socket?.emit("typing", {
+        senderId: user.id,
+        receiverId: selectedUser.id,
+        isTyping
+      } satisfies TypingDTO);
+    },
+    [selectedUser, socket, user.id]
+  );
+
+  function updateTypingStatus(senderId: string, isTyping: boolean) {
+    const existingTimer = typingTimersRef.current[senderId];
+
+    if (existingTimer) {
+      window.clearTimeout(existingTimer);
+      delete typingTimersRef.current[senderId];
+    }
+
+    setTypingUserIds((current) => ({
+      ...current,
+      [senderId]: isTyping
+    }));
+
+    if (!isTyping) return;
+
+    typingTimersRef.current[senderId] = window.setTimeout(() => {
+      setTypingUserIds((current) => ({
+        ...current,
+        [senderId]: false
+      }));
+      delete typingTimersRef.current[senderId];
+    }, 3000);
+  }
+
   async function editMessage(message: MessageDTO, text: string) {
     try {
       const result = await api.editMessage(message.id, user.id, text);
@@ -457,6 +508,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   }, [pinnedMessages.length]);
 
   const pinnedMessage = pinnedMessages[pinnedCursor] ?? null;
+  const selectedUserTyping = Boolean(selectedUser && typingUserIds[selectedUser.id]);
 
   function showNextPinnedMessage() {
     setPinnedCursor((current) => (pinnedMessages.length ? (current + 1) % pinnedMessages.length : 0));
@@ -500,7 +552,31 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                   <Avatar username={selectedUser.username} avatarUrl={selectedUser.avatarUrl} online={selectedUser.online} className="h-12 w-12 rounded-full" />
                   <div>
                     <h2 className="text-base font-semibold text-primaryText">{selectedUser.username}</h2>
-                    <p className="mt-1 text-xs text-secondaryText">@{selectedUser.handle ?? selectedUser.id}</p>
+                    <AnimatePresence mode="wait" initial={false}>
+                      {selectedUserTyping ? (
+                        <motion.p
+                          key="typing"
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.14 }}
+                          className="mt-1 text-xs font-medium text-accent"
+                        >
+                          {t.chat.typing}
+                        </motion.p>
+                      ) : (
+                        <motion.p
+                          key="handle"
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.14 }}
+                          className="mt-1 text-xs text-secondaryText"
+                        >
+                          @{selectedUser.handle ?? selectedUser.id}
+                        </motion.p>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 rounded-2xl border border-borderSoft bg-panel px-3 py-2 text-xs text-secondaryText">
@@ -530,6 +606,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                 replyToAuthorName={replyTarget ? getMessageAuthorName(replyTarget, user, selectedUser) : ""}
                 onCancelReply={() => setReplyTarget(null)}
                 onSend={sendMessage}
+                onTypingChange={sendTypingState}
               />
             </motion.div>
           )}

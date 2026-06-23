@@ -1,5 +1,5 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import type { MessageDTO, OnlineUsersDTO, SendMessageDTO } from "@minimalchat/shared";
+import type { MessageDTO, OnlineUsersDTO, SendMessageDTO, TypingDTO } from "@minimalchat/shared";
 import { api, toMessageDTO } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 
@@ -40,6 +40,13 @@ export class SupabaseChatSocket {
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "Message" }, (payload) => {
         this.emitLocal("message:delete", { id: (payload.old as PopupPayload).id });
       })
+      .on("broadcast", { event: "typing" }, (payload) => {
+        const typing = payload.payload as TypingDTO;
+
+        if (typing.receiverId === this.userId) {
+          this.emitLocal("typing", typing);
+        }
+      })
       .on("presence", { event: "sync" }, () => {
         const nextIds = new Set(
           Object.values(this.channel.presenceState())
@@ -74,9 +81,17 @@ export class SupabaseChatSocket {
     this.handlers.set(event, handlers);
   }
 
-  emit(event: string) {
+  emit(event: string, payload?: unknown) {
     if (event === "user:disconnect") {
       this.disconnect();
+    }
+
+    if (event === "typing" && this.connected) {
+      void this.channel.send({
+        type: "broadcast",
+        event: "typing",
+        payload
+      });
     }
   }
 

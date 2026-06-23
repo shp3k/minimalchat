@@ -67,3 +67,9 @@ export interface ApiErrorDTO {
 export interface OnlineUsersDTO {
   userIds: string[];
 }
+
+export interface TypingDTO {
+  senderId: string;
+  receiverId: string;
+  isTyping: boolean;
+}

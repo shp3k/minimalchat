@@ -1,5 +1,5 @@
 import type { Server } from "socket.io";
-import type { MessageDTO, SendMessageDTO } from "@minimalchat/shared";
+import type { MessageDTO, SendMessageDTO, TypingDTO } from "@minimalchat/shared";
 import { prisma } from "./db.js";
 import { toMessageDTO } from "./mappers.js";
 
@@ -120,6 +120,12 @@ export function setupSocket(io: Server) {
       } catch {
         ack?.({ ok: false, error: "Could not send message" });
       }
+    });
+
+    socket.on("typing", (payload: TypingDTO) => {
+      if (!payload.senderId || !payload.receiverId || payload.senderId === payload.receiverId) return;
+
+      io.to(payload.receiverId).emit("typing", payload);
     });
 
     socket.on("disconnect", () => {

@@ -14,11 +14,13 @@ interface ChatInputProps {
   replyToAuthorName?: string;
   onCancelReply?: () => void;
   onSend: (text: string, file?: File | null) => Promise<void> | void;
+  onTypingChange?: (isTyping: boolean) => void;
 }
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
+const TYPING_IDLE_MS = 1800;
 
-export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelReply, onSend }: ChatInputProps) {
+export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelReply, onSend, onTypingChange }: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputBoxRef = useRef<HTMLDivElement>(null);
@@ -33,13 +35,16 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
   const recordingChunksRef = useRef<Blob[]>([]);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingTimerRef = useRef<number | null>(null);
+  const typingActiveRef = useRef(false);
+  const typingIdleTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
+      stopTyping();
       stopRecordingTimer();
       stopRecordingStream();
     };
-  }, []);
+  }, [onTypingChange]);
 
   useEffect(() => {
     if (!pasteMenu) return;
@@ -72,6 +77,7 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
       setText("");
       setFile(null);
       setFileError("");
+      stopTyping();
       onCancelReply?.();
     } finally {
       setSending(false);
@@ -99,6 +105,50 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
       event.preventDefault();
       void submit();
     }
+  }
+
+  function handleTextChange(event: ChangeEvent<HTMLTextAreaElement>) {
+    const value = event.target.value;
+    setText(value);
+
+    if (disabled) return;
+
+    if (value.trim()) {
+      startTyping();
+      scheduleTypingStop();
+      return;
+    }
+
+    stopTyping();
+  }
+
+  function startTyping() {
+    if (typingActiveRef.current) return;
+
+    typingActiveRef.current = true;
+    onTypingChange?.(true);
+  }
+
+  function stopTyping() {
+    if (typingIdleTimerRef.current) {
+      window.clearTimeout(typingIdleTimerRef.current);
+      typingIdleTimerRef.current = null;
+    }
+
+    if (!typingActiveRef.current) return;
+
+    typingActiveRef.current = false;
+    onTypingChange?.(false);
+  }
+
+  function scheduleTypingStop() {
+    if (typingIdleTimerRef.current) {
+      window.clearTimeout(typingIdleTimerRef.current);
+    }
+
+    typingIdleTimerRef.current = window.setTimeout(() => {
+      stopTyping();
+    }, TYPING_IDLE_MS);
   }
 
   async function openPasteMenu(event: ReactMouseEvent<HTMLElement>) {
@@ -359,7 +409,7 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
             maxLength={1000}
             rows={1}
             disabled={disabled}
-            onChange={(event) => setText(event.target.value)}
+            onChange={handleTextChange}
             onKeyDown={handleKeyDown}
             placeholder={disabled ? t.chat.connecting : t.chat.writeMessage}
             className="max-h-32 min-h-[44px] border-0 bg-transparent py-2.5 focus:ring-0"

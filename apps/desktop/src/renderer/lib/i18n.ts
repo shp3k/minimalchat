@@ -59,7 +59,8 @@ export const translations = {
       originalMessage: "Message",
       originalMessageUnavailable: "Original message is unavailable",
       online: "online",
-      offline: "offline"
+      offline: "offline",
+      typing: "typing..."
     },
     profile: {
       title: "Profile",
@@ -159,7 +160,8 @@ export const translations = {
       originalMessage: "Сообщение",
       originalMessageUnavailable: "Исходное сообщение недоступно",
       online: "онлайн",
-      offline: "офлайн"
+      offline: "офлайн",
+      typing: "печатает..."
     },
     profile: {
       title: "Профиль",
