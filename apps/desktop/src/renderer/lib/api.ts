@@ -48,6 +48,14 @@ function getAuthErrorCode(error: AuthLikeError | null | undefined) {
   return "VALIDATION_ERROR";
 }
 
+function toUtcIsoString(value: string) {
+  const normalized = value.trim();
+  const hasExplicitTimezone = /[t\s]\d{2}:\d{2}.*(?:z|[+-]\d{2}(?::?\d{2})?)$/i.test(normalized);
+  const safeValue = hasExplicitTimezone ? normalized : `${normalized}Z`;
+
+  return new Date(safeValue).toISOString();
+}
+
 type UserRow = {
   id: string;
   username: string;
@@ -83,7 +91,7 @@ function toUserDTO(row: UserRow, online = false): UserDTO {
     email: row.email,
     handle: row.handle,
     avatarUrl: row.avatarUrl,
-    createdAt: new Date(row.createdAt).toISOString(),
+    createdAt: toUtcIsoString(row.createdAt),
     online
   };
 }
@@ -98,10 +106,10 @@ export function toMessageDTO(row: MessageRow): MessageDTO {
     attachmentName: row.attachmentName,
     attachmentMime: row.attachmentMime,
     attachmentSize: row.attachmentSize,
-    sentAt: new Date(row.sentAt).toISOString(),
-    deliveredAt: row.deliveredAt ? new Date(row.deliveredAt).toISOString() : null,
-    readAt: row.readAt ? new Date(row.readAt).toISOString() : null,
-    editedAt: row.editedAt ? new Date(row.editedAt).toISOString() : null,
+    sentAt: toUtcIsoString(row.sentAt),
+    deliveredAt: row.deliveredAt ? toUtcIsoString(row.deliveredAt) : null,
+    readAt: row.readAt ? toUtcIsoString(row.readAt) : null,
+    editedAt: row.editedAt ? toUtcIsoString(row.editedAt) : null,
     isPinned: row.isPinned,
     isRead: row.isRead
   };
