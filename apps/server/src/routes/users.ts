@@ -130,27 +130,26 @@ async function searchUsers(currentUserId: string, rawSearch: string) {
     return [];
   }
 
-  const users = await prisma.user.findMany({
+  const user = await prisma.user.findUnique({
     where: {
-      id: { not: currentUserId },
-      handle: { startsWith: handle }
-    },
-    orderBy: { handle: "asc" },
-    take: 12
+      handle
+    }
   });
+
+  if (!user || user.id === currentUserId) {
+    return [];
+  }
+
   const onlineIds = getOnlineUserIds();
+  const lastMessage = await findLastMessage(currentUserId, user.id);
 
-  return Promise.all(
-    users.map(async (user) => {
-      const lastMessage = await findLastMessage(currentUserId, user.id);
-
-      return {
-        ...toUserDTO(user, onlineIds.has(user.id)),
-        lastMessage: lastMessage ? toMessageDTO(lastMessage) : null,
-        unreadCount: await countUnreadMessages(currentUserId, user.id)
-      };
-    })
-  );
+  return [
+    {
+      ...toUserDTO(user, onlineIds.has(user.id)),
+      lastMessage: lastMessage ? toMessageDTO(lastMessage) : null,
+      unreadCount: await countUnreadMessages(currentUserId, user.id)
+    }
+  ];
 }
 
 function findLastMessage(currentUserId: string, userId: string) {

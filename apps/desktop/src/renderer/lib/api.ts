@@ -350,9 +350,8 @@ export const api = {
         .from("User")
         .select("*")
         .neq("id", currentUserId)
-        .ilike("handle", `${handle}%`)
-        .order("handle", { ascending: true })
-        .limit(12)
+        .eq("handle", handle)
+        .limit(1)
         .returns<UserRow[]>();
 
       if (result.error) {
