@@ -74,6 +74,7 @@ type MessageRow = {
   attachmentName: string | null;
   attachmentMime: string | null;
   attachmentSize: number | null;
+  replyToMessageId: string | null;
   sentAt: string;
   deliveredAt: string | null;
   readAt: string | null;
@@ -106,6 +107,7 @@ export function toMessageDTO(row: MessageRow): MessageDTO {
     attachmentName: row.attachmentName,
     attachmentMime: row.attachmentMime,
     attachmentSize: row.attachmentSize,
+    replyToMessageId: row.replyToMessageId ?? null,
     sentAt: toUtcIsoString(row.sentAt),
     deliveredAt: row.deliveredAt ? toUtcIsoString(row.deliveredAt) : null,
     readAt: row.readAt ? toUtcIsoString(row.readAt) : null,
@@ -377,7 +379,8 @@ export const api = {
         id: crypto.randomUUID(),
         senderId: payload.senderId,
         receiverId: payload.receiverId,
-        text: payload.text.trim()
+        text: payload.text.trim(),
+        replyToMessageId: payload.replyToMessageId ?? null
       })
       .select("*")
       .single<MessageRow>();
@@ -401,7 +404,8 @@ export const api = {
         attachmentUrl,
         attachmentName: payload.file?.name ?? null,
         attachmentMime: payload.file?.type || null,
-        attachmentSize: payload.file?.size ?? null
+        attachmentSize: payload.file?.size ?? null,
+        replyToMessageId: payload.replyToMessageId ?? null
       })
       .select("*")
       .single<MessageRow>();

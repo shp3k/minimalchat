@@ -1,4 +1,5 @@
 import { ChangeEvent, FormEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
+import type { MessageDTO } from "@minimalchat/shared";
 import { ClipboardPaste, FileIcon, Mic, Paperclip, SendHorizonal, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Button } from "@/components/ui/button";
@@ -9,12 +10,15 @@ import { cn } from "@/lib/utils";
 interface ChatInputProps {
   disabled?: boolean;
   t: Translation;
+  replyTo?: MessageDTO | null;
+  replyToAuthorName?: string;
+  onCancelReply?: () => void;
   onSend: (text: string, file?: File | null) => Promise<void> | void;
 }
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
-export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
+export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelReply, onSend }: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputBoxRef = useRef<HTMLDivElement>(null);
@@ -68,6 +72,7 @@ export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
       setText("");
       setFile(null);
       setFileError("");
+      onCancelReply?.();
     } finally {
       setSending(false);
     }
@@ -174,6 +179,7 @@ export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
     setSending(true);
     try {
       await onSend("", voiceFile);
+      onCancelReply?.();
     } finally {
       setSending(false);
     }
@@ -287,6 +293,33 @@ export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
             </motion.div>
           ) : null}
         </AnimatePresence>
+        <AnimatePresence initial={false}>
+          {replyTo ? (
+            <motion.div
+              initial={{ opacity: 0, y: 8, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.98 }}
+              transition={{ duration: 0.16 }}
+              className="mb-2 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2.5"
+            >
+              <div className="h-9 w-1 shrink-0 rounded-full bg-accent" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-accent">
+                  {t.chat.replyingTo} {replyToAuthorName || t.chat.originalMessage}
+                </p>
+                <p className="mt-0.5 truncate text-sm text-secondaryText">{getMessagePreview(replyTo, t)}</p>
+              </div>
+              <button
+                type="button"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-secondaryText transition hover:bg-white/[0.08] hover:text-primaryText"
+                aria-label={t.chat.cancelEdit}
+                onClick={onCancelReply}
+              >
+                <X size={16} />
+              </button>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
         {file ? (
           <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-borderSoft bg-background px-3 py-2">
             <div className="flex min-w-0 items-center gap-2 text-sm text-primaryText">
@@ -370,6 +403,10 @@ async function readClipboardText() {
   } catch {
     return "";
   }
+}
+
+function getMessagePreview(message: MessageDTO, t: Translation) {
+  return message.text.trim() || message.attachmentName || t.chat.originalMessage;
 }
 
 function getRecorderMimeType() {

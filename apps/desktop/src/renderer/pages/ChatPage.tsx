@@ -35,6 +35,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const [profileOpen, setProfileOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [imagePreview, setImagePreview] = useState<{ url: string; name: string } | null>(null);
+  const [replyTarget, setReplyTarget] = useState<MessageDTO | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [pinnedCursor, setPinnedCursor] = useState(0);
@@ -50,7 +51,14 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
   useEffect(() => {
     setPinnedCursor(0);
+    setReplyTarget(null);
   }, [selectedUser?.id]);
+
+  useEffect(() => {
+    if (replyTarget && !messages.some((message) => message.id === replyTarget.id)) {
+      setReplyTarget(null);
+    }
+  }, [messages, replyTarget]);
 
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
@@ -74,6 +82,12 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
         return;
       }
 
+      if (replyTarget) {
+        event.preventDefault();
+        setReplyTarget(null);
+        return;
+      }
+
       if (selectedUser) {
         event.preventDefault();
         setSelectedUser(null);
@@ -83,7 +97,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [imagePreview, profileOpen, selectedUser, settingsOpen]);
+  }, [imagePreview, profileOpen, replyTarget, selectedUser, settingsOpen]);
 
   useEffect(() => {
     const chatSocket = createChatSocket(user.id);
@@ -272,6 +286,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
           senderId: user.id,
           receiverId: selectedUser.id,
           text,
+          replyToMessageId: replyTarget?.id ?? null,
           file
         });
         setMessages((current) =>
@@ -287,7 +302,8 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     const response = await sendSocketMessage(socket, {
       senderId: user.id,
       receiverId: selectedUser.id,
-      text
+      text,
+      replyToMessageId: replyTarget?.id ?? null
     });
 
     if (!response.ok) {
@@ -427,6 +443,8 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
               </header>
               <MessageList
                 currentUserId={user.id}
+                currentUserName={user.username}
+                otherUserName={selectedUser.username}
                 messages={messages}
                 loading={messagesLoading}
                 t={t}
@@ -434,10 +452,18 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                 onEditMessage={editMessage}
                 onDeleteMessage={deleteMessage}
                 onPinMessage={pinMessage}
+                onReplyMessage={setReplyTarget}
                 onPinnedConsumed={showNextPinnedMessage}
                 onOpenImage={setImagePreview}
               />
-              <ChatInput disabled={!connected || messagesLoading} t={t} onSend={sendMessage} />
+              <ChatInput
+                disabled={!connected || messagesLoading}
+                t={t}
+                replyTo={replyTarget}
+                replyToAuthorName={replyTarget ? getMessageAuthorName(replyTarget, user, selectedUser) : ""}
+                onCancelReply={() => setReplyTarget(null)}
+                onSend={sendMessage}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -500,4 +526,8 @@ function bumpUserWithMessage(
     unreadCount: otherUserId === selectedUserId ? 0 : matched.unreadCount + unreadIncrement
   });
   return next;
+}
+
+function getMessageAuthorName(message: MessageDTO, currentUser: UserDTO, selectedUser: UserDTO) {
+  return message.senderId === currentUser.id ? currentUser.username : selectedUser.username;
 }

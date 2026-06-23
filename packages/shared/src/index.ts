@@ -22,6 +22,7 @@ export interface MessageDTO {
   attachmentName: string | null;
   attachmentMime: string | null;
   attachmentSize: number | null;
+  replyToMessageId: string | null;
   sentAt: string;
   deliveredAt: string | null;
   readAt: string | null;
@@ -49,6 +50,7 @@ export interface SendMessageDTO {
   senderId: string;
   receiverId: string;
   text: string;
+  replyToMessageId?: string | null;
 }
 
 export interface UpdateProfileDTO {

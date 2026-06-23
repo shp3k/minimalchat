@@ -110,8 +110,9 @@ export function setupSocket(io: Server) {
             senderId: payload.senderId,
             receiverId: payload.receiverId,
             text,
-            deliveredAt: socketsByUserId.has(payload.receiverId) ? new Date() : null
-          }
+            deliveredAt: socketsByUserId.has(payload.receiverId) ? new Date() : null,
+            replyToMessageId: payload.replyToMessageId ?? null
+          } as any
         });
         const dto = toMessageDTO(message);
         emitMessage(dto);

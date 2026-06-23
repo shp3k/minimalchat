@@ -23,6 +23,7 @@ export function toMessageDTO(message: Message): MessageDTO {
     attachmentName: message.attachmentName,
     attachmentMime: message.attachmentMime,
     attachmentSize: message.attachmentSize,
+    replyToMessageId: (message as Message & { replyToMessageId?: string | null }).replyToMessageId ?? null,
     sentAt: message.sentAt.toISOString(),
     deliveredAt: message.deliveredAt ? message.deliveredAt.toISOString() : null,
     readAt: message.readAt ? message.readAt.toISOString() : message.isRead ? message.sentAt.toISOString() : null,

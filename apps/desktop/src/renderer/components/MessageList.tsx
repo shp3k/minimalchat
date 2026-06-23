@@ -7,6 +7,8 @@ import type { Translation } from "@/lib/i18n";
 
 interface MessageListProps {
   currentUserId: string;
+  currentUserName: string;
+  otherUserName: string;
   messages: MessageDTO[];
   loading: boolean;
   t: Translation;
@@ -14,12 +16,15 @@ interface MessageListProps {
   onEditMessage: (message: MessageDTO, text: string) => Promise<void>;
   onDeleteMessage: (message: MessageDTO, mode: "me" | "all") => Promise<void>;
   onPinMessage: (message: MessageDTO) => Promise<void>;
+  onReplyMessage: (message: MessageDTO) => void;
   onPinnedConsumed: () => void;
   onOpenImage: (image: { url: string; name: string }) => void;
 }
 
 export function MessageList({
   currentUserId,
+  currentUserName,
+  otherUserName,
   messages,
   loading,
   t,
@@ -27,6 +32,7 @@ export function MessageList({
   onEditMessage,
   onDeleteMessage,
   onPinMessage,
+  onReplyMessage,
   onPinnedConsumed,
   onOpenImage
 }: MessageListProps) {
@@ -62,7 +68,7 @@ export function MessageList({
   function openPopup(messageId: string, type: "menu" | "delete") {
     const messageElement = messageRefs.current.get(messageId);
     const scrollArea = scrollAreaRef.current;
-    const estimatedPopupHeight = type === "delete" ? 176 : 154;
+    const estimatedPopupHeight = type === "delete" ? 176 : 190;
     const placement =
       messageElement && scrollArea
         ? scrollArea.getBoundingClientRect().bottom - messageElement.getBoundingClientRect().bottom < estimatedPopupHeight + 12
@@ -102,7 +108,7 @@ export function MessageList({
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-[0.14em] text-secondaryText">{t.chat.pinned}</p>
             <p className="mt-0.5 truncate text-sm">
-              {pinnedMessage.text || pinnedMessage.attachmentName || "Message"}
+              {pinnedMessage.text || pinnedMessage.attachmentName || t.chat.originalMessage}
             </p>
           </div>
         </button>
@@ -119,7 +125,12 @@ export function MessageList({
       ) : (
         <div className="flex min-h-full flex-col justify-end gap-2.5">
           <AnimatePresence initial={false}>
-            {messages.map((message) => (
+            {messages.map((message) => {
+              const replyToMessage = message.replyToMessageId
+                ? messages.find((item) => item.id === message.replyToMessageId) ?? null
+                : null;
+
+              return (
               <div
                 key={message.id}
                 ref={(element) => {
@@ -137,9 +148,13 @@ export function MessageList({
                   popupType={activePopup?.messageId === message.id ? activePopup.type : null}
                   popupPlacement={activePopup?.messageId === message.id ? activePopup.placement : "top"}
                   t={t}
+                  replyToMessage={replyToMessage}
+                  replyToAuthorName={replyToMessage ? getMessageAuthorName(replyToMessage, currentUserId, currentUserName, otherUserName) : ""}
                   onEdit={onEditMessage}
                   onDelete={onDeleteMessage}
                   onPin={onPinMessage}
+                  onReply={onReplyMessage}
+                  onOpenReply={scrollToMessage}
                   onOpenImage={onOpenImage}
                   onPopupChange={(type) => {
                     if (!type) {
@@ -151,7 +166,8 @@ export function MessageList({
                   }}
                 />
               </div>
-            ))}
+              );
+            })}
           </AnimatePresence>
           <div ref={endRef} />
         </div>
@@ -159,4 +175,8 @@ export function MessageList({
       </div>
     </div>
   );
+}
+
+function getMessageAuthorName(message: MessageDTO, currentUserId: string, currentUserName: string, otherUserName: string) {
+  return message.senderId === currentUserId ? currentUserName : otherUserName;
 }

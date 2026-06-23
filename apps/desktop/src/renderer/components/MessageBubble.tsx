@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { MessageDTO } from "@minimalchat/shared";
-import { Check, CheckCheck, Copy, Download, ExternalLink, FileIcon, Pause, Pencil, Pin, Play, Trash2, X } from "lucide-react";
+import { Check, CheckCheck, Copy, Download, ExternalLink, FileIcon, Pause, Pencil, Pin, Play, Reply, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import type { Translation } from "@/lib/i18n";
 import { cn, formatMessageTime } from "@/lib/utils";
@@ -12,9 +12,13 @@ interface MessageBubbleProps {
   highlighted?: boolean;
   popupType: "menu" | "delete" | null;
   popupPlacement: "top" | "bottom";
+  replyToMessage: MessageDTO | null;
+  replyToAuthorName: string;
   onEdit: (message: MessageDTO, text: string) => Promise<void>;
   onDelete: (message: MessageDTO, mode: "me" | "all") => Promise<void>;
   onPin: (message: MessageDTO) => Promise<void>;
+  onReply: (message: MessageDTO) => void;
+  onOpenReply: (messageId: string) => void;
   onOpenImage: (image: { url: string; name: string }) => void;
   onPopupChange: (type: "menu" | "delete" | null) => void;
 }
@@ -26,9 +30,13 @@ export function MessageBubble({
   highlighted,
   popupType,
   popupPlacement,
+  replyToMessage,
+  replyToAuthorName,
   onEdit,
   onDelete,
   onPin,
+  onReply,
+  onOpenReply,
   onOpenImage,
   onPopupChange
 }: MessageBubbleProps) {
@@ -86,6 +94,10 @@ export function MessageBubble({
               placement={popupPlacement}
               pinned={message.isPinned}
               canCopy={!isVoice && Boolean(message.text || attachmentUrl)}
+              onReply={() => {
+                onReply(message);
+                onPopupChange(null);
+              }}
               onEdit={() => {
                 setDraft(message.text);
                 setEditing(true);
@@ -127,6 +139,19 @@ export function MessageBubble({
             <Pin size={12} />
             {t.chat.pinned}
           </div>
+        ) : null}
+        {message.replyToMessageId ? (
+          <ReplyPreview
+            mine={mine}
+            t={t}
+            message={replyToMessage}
+            authorName={replyToAuthorName}
+            onOpen={() => {
+              if (replyToMessage) {
+                onOpenReply(replyToMessage.id);
+              }
+            }}
+          />
         ) : null}
         {attachmentUrl ? (
           <AttachmentPreview
@@ -204,19 +229,61 @@ function MessageStatus({ message }: { message: MessageDTO }) {
   return <Check size={15} strokeWidth={2.35} className="text-white/62" />;
 }
 
+function ReplyPreview({
+  mine,
+  t,
+  message,
+  authorName,
+  onOpen
+}: {
+  mine: boolean;
+  t: Translation;
+  message: MessageDTO | null;
+  authorName: string;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={!message}
+      className={cn(
+        "mb-2 flex w-full min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition",
+        mine
+          ? "border-white/14 bg-white/[0.12] hover:bg-white/[0.17] disabled:hover:bg-white/[0.12]"
+          : "border-borderSoft bg-background/55 hover:bg-white/[0.05] disabled:hover:bg-background/55"
+      )}
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen();
+      }}
+    >
+      <span className={cn("h-9 w-1 shrink-0 rounded-full", mine ? "bg-white/65" : "bg-accent")} />
+      <span className="min-w-0 flex-1">
+        <span className={cn("block truncate text-xs font-semibold", mine ? "text-white/86" : "text-accent")}>
+          {message ? authorName || t.chat.originalMessage : t.chat.originalMessageUnavailable}
+        </span>
+        <span className={cn("mt-0.5 block truncate text-sm", mine ? "text-white/70" : "text-secondaryText")}>
+          {message ? getMessagePreview(message, t) : t.chat.originalMessageUnavailable}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 interface MessageMenuProps {
   t: Translation;
   mine: boolean;
   placement: "top" | "bottom";
   pinned: boolean;
   canCopy: boolean;
+  onReply: () => void;
   onEdit: () => void;
   onCopy: () => void;
   onPin: () => void | Promise<void>;
   onDelete: () => void | Promise<void>;
 }
 
-function MessageMenu({ t, mine, placement, pinned, canCopy, onEdit, onCopy, onPin, onDelete }: MessageMenuProps) {
+function MessageMenu({ t, mine, placement, pinned, canCopy, onReply, onEdit, onCopy, onPin, onDelete }: MessageMenuProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: placement === "top" ? 8 : -8, scale: 0.96 }}
@@ -230,6 +297,7 @@ function MessageMenu({ t, mine, placement, pinned, canCopy, onEdit, onCopy, onPi
       )}
       onClick={(event) => event.stopPropagation()}
     >
+      <MenuButton icon={<Reply size={15} />} label={t.chat.replyMessage} onClick={onReply} />
       {mine ? <MenuButton icon={<Pencil size={15} />} label={t.chat.editMessage} onClick={onEdit} /> : null}
       <MenuButton icon={<Copy size={15} />} label={t.chat.copyMessage} onClick={onCopy} disabled={!canCopy} />
       <MenuButton icon={<Pin size={15} />} label={pinned ? t.chat.unpinMessage : t.chat.pinMessage} onClick={onPin} />
@@ -491,6 +559,10 @@ function getAttachmentUrl(value: string | null) {
 
 function getCopyPayload(message: MessageDTO, attachmentUrl: string | null) {
   return [message.text, attachmentUrl].filter(Boolean).join("\n");
+}
+
+function getMessagePreview(message: MessageDTO, t: Translation) {
+  return message.text.trim() || message.attachmentName || t.chat.originalMessage;
 }
 
 async function copyToClipboard(value: string) {

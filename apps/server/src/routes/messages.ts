@@ -35,7 +35,8 @@ const upload = multer({
 const sendSchema = z.object({
   senderId: z.string().min(1),
   receiverId: z.string().min(1),
-  text: z.string().trim().max(1000, "Message is too long").default("")
+  text: z.string().trim().max(1000, "Message is too long").default(""),
+  replyToMessageId: z.string().min(1).nullable().optional()
 });
 
 const editSchema = z.object({
@@ -110,8 +111,9 @@ router.post("/send", upload.single("file"), async (req, res, next) => {
         attachmentUrl: storedFile?.url ?? null,
         attachmentName: file ? decodeUploadName(file.originalname) : null,
         attachmentMime: file?.mimetype ?? null,
-        attachmentSize: file?.size ?? null
-      }
+        attachmentSize: file?.size ?? null,
+        replyToMessageId: data.replyToMessageId ?? null
+      } as any
     });
     const dto = toMessageDTO(message);
     emitMessage(dto);

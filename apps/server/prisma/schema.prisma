@@ -29,6 +29,7 @@ model Message {
   attachmentName String?
   attachmentMime String?
   attachmentSize Int?
+  replyToMessageId String?
   sentAt     DateTime @default(now())
   deliveredAt DateTime?
   readAt     DateTime?
@@ -42,4 +43,5 @@ model Message {
 
   @@index([senderId, receiverId, sentAt])
   @@index([receiverId, senderId, sentAt])
+  @@index([replyToMessageId])
 }
