@@ -91,8 +91,8 @@ export function SettingsModal({
             >
               <span
                 className={cn(
-                  "absolute top-0.5 h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform",
-                  user.hideLastSeen ? "translate-x-[20px]" : "translate-x-0.5"
+                  "absolute left-[3px] top-1/2 h-[18px] w-[18px] -translate-y-1/2 rounded-full bg-white shadow-sm transition-transform",
+                  user.hideLastSeen ? "translate-x-[18px]" : "translate-x-0"
                 )}
               />
             </button>
