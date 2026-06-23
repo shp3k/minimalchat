@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, shell } = require("electron");
+const { app, BrowserWindow, clipboard, ipcMain, session, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -211,4 +211,8 @@ ipcMain.handle("window:close", () => mainWindow?.close());
 ipcMain.handle("app:open-external", (_event, url) => {
   if (typeof url !== "string" || !isSafeExternalUrl(url)) return;
   return shell.openExternal(url);
+});
+ipcMain.handle("clipboard:read-text", () => clipboard.readText());
+ipcMain.handle("clipboard:write-text", (_event, value) => {
+  clipboard.writeText(String(value ?? ""));
 });

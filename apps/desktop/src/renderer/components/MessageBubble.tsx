@@ -495,11 +495,28 @@ function getCopyPayload(message: MessageDTO, attachmentUrl: string | null) {
 
 async function copyToClipboard(value: string) {
   if (window.minimalChatClipboard) {
-    window.minimalChatClipboard.writeText(value);
+    await window.minimalChatClipboard.writeText(value);
     return;
   }
 
-  await navigator.clipboard.writeText(value);
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch {
+    copyToClipboardWithSelection(value);
+  }
+}
+
+function copyToClipboardWithSelection(value: string) {
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
 }
 
 async function openExternalUrl(url: string) {

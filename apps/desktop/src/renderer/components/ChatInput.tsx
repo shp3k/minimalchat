@@ -96,12 +96,12 @@ export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
     }
   }
 
-  async function openPasteMenu(event: ReactMouseEvent<HTMLTextAreaElement>) {
+  async function openPasteMenu(event: ReactMouseEvent<HTMLElement>) {
     event.preventDefault();
     event.stopPropagation();
 
     const rect = inputBoxRef.current?.getBoundingClientRect();
-    const clipboardText = readClipboardText().trim();
+    const clipboardText = (await readClipboardText()).trim();
     const rawX = rect ? event.clientX - rect.left : 16;
     const rawY = rect ? event.clientY - rect.top : 16;
 
@@ -113,7 +113,11 @@ export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
   }
 
   function pasteFromClipboard() {
-    const value = readClipboardText();
+    void pasteFromClipboardAsync();
+  }
+
+  async function pasteFromClipboardAsync() {
+    const value = await readClipboardText();
     if (!value) return;
 
     const textarea = textareaRef.current;
@@ -252,7 +256,11 @@ export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
 
   return (
     <form onSubmit={submit} className="border-t border-borderSoft bg-background/70 p-4">
-      <div ref={inputBoxRef} className="relative rounded-2xl border border-borderSoft bg-panel p-2 shadow-[0_12px_34px_rgba(0,0,0,0.24)]">
+      <div
+        ref={inputBoxRef}
+        className="relative rounded-2xl border border-borderSoft bg-panel p-2 shadow-[0_12px_34px_rgba(0,0,0,0.24)]"
+        onContextMenu={openPasteMenu}
+      >
         <AnimatePresence>
           {pasteMenu ? (
             <motion.div
@@ -320,7 +328,6 @@ export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
             disabled={disabled}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={handleKeyDown}
-            onContextMenu={openPasteMenu}
             placeholder={disabled ? t.chat.connecting : t.chat.writeMessage}
             className="max-h-32 min-h-[44px] border-0 bg-transparent py-2.5 focus:ring-0"
           />
@@ -353,12 +360,16 @@ export function ChatInput({ disabled, t, onSend }: ChatInputProps) {
   );
 }
 
-function readClipboardText() {
+async function readClipboardText() {
   if (window.minimalChatClipboard) {
     return window.minimalChatClipboard.readText();
   }
 
-  return "";
+  try {
+    return await navigator.clipboard.readText();
+  } catch {
+    return "";
+  }
 }
 
 function getRecorderMimeType() {
