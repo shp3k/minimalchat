@@ -212,6 +212,16 @@ async function uploadAttachment(file: File) {
 }
 
 export const api = {
+  async currentUser(): Promise<UserDTO | null> {
+    const auth = await supabase.auth.getUser();
+
+    if (auth.error || !auth.data.user) {
+      return null;
+    }
+
+    return ensureProfile(auth.data.user);
+  },
+
   async register(payload: RegisterDTO): Promise<AuthResponseDTO> {
     const auth = await supabase.auth.signUp({
       email: payload.email,

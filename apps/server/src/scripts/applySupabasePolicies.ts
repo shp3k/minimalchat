@@ -1,6 +1,12 @@
 import { prisma } from "../db.js";
 
 const statements = [
+  `grant usage on schema public to anon, authenticated`,
+  `grant select, insert, update on table public."User" to authenticated`,
+  `grant select, insert, update, delete on table public."Message" to authenticated`,
+  `grant usage on schema storage to authenticated`,
+  `grant select on table storage.buckets to authenticated`,
+  `grant select, insert, update, delete on table storage.objects to authenticated`,
   `alter table public."User" enable row level security`,
   `alter table public."Message" enable row level security`,
   `alter table public."Message" replica identity full`,
