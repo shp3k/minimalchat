@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Notification, clipboard, ipcMain, nativeImage, session, shell } = require("electron");
+﻿const { app, BrowserWindow, Notification, clipboard, ipcMain, nativeImage, session, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -14,6 +14,8 @@ try {
 
 let mainWindow = null;
 let serverProcess = null;
+let updatesReady = false;
+let checkingForUpdates = false;
 const SERVER_URL = process.env.VITE_API_URL ?? "http://localhost:4000";
 const PROJECT_ROOT = path.resolve(__dirname, "../../../..");
 const SERVER_DIR = path.join(PROJECT_ROOT, "apps", "server");
@@ -156,15 +158,62 @@ function createWindow() {
   }
 }
 
+function sendUpdateStatus(status) {
+  mainWindow?.webContents.send("updates:status", status);
+}
+
 function setupAutoUpdates() {
   if (!app.isPackaged || !autoUpdater) return;
+  if (updatesReady) return;
 
-  autoUpdater.autoDownload = true;
+  updatesReady = true;
+  autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+
+  autoUpdater.on("checking-for-update", () => {
+    checkingForUpdates = true;
+    sendUpdateStatus({ state: "checking" });
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    checkingForUpdates = false;
+    sendUpdateStatus({ state: "available", version: info.version });
+    autoUpdater.downloadUpdate().catch((error) => {
+      sendUpdateStatus({ state: "error", message: error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРєР°С‡Р°С‚СЊ РѕР±РЅРѕРІР»РµРЅРёРµ" });
+    });
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    checkingForUpdates = false;
+    sendUpdateStatus({ state: "not-available" });
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    sendUpdateStatus({
+      state: "downloading",
+      percent: Math.round(progress.percent),
+      transferred: progress.transferred,
+      total: progress.total
+    });
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    sendUpdateStatus({ state: "downloaded", version: info.version });
+  });
+
+  autoUpdater.on("error", (error) => {
+    checkingForUpdates = false;
+    sendUpdateStatus({ state: "error", message: error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕРІРµСЂРёС‚СЊ РѕР±РЅРѕРІР»РµРЅРёРµ" });
+  });
+
+  autoUpdater.checkForUpdates().catch((error) => {
+    checkingForUpdates = false;
+    sendUpdateStatus({ state: "error", message: error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕРІРµСЂРёС‚СЊ РѕР±РЅРѕРІР»РµРЅРёРµ" });
+  });
 
   const interval = setInterval(() => {
-    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+    if (checkingForUpdates) return;
+    autoUpdater.checkForUpdates().catch(() => {});
   }, 1000 * 60 * 30);
 
   interval.unref?.();
@@ -292,4 +341,21 @@ ipcMain.handle("notification:show-message", (_event, payload) => {
 });
 ipcMain.handle("app:set-unread-count", (_event, count) => {
   setUnreadBadge(count);
+});
+ipcMain.handle("updates:check", async () => {
+  if (!app.isPackaged || !autoUpdater) {
+    return { ok: false, code: "UPDATES_UNAVAILABLE" };
+  }
+
+  if (checkingForUpdates) {
+    return { ok: true };
+  }
+
+  checkingForUpdates = true;
+  await autoUpdater.checkForUpdates();
+  return { ok: true };
+});
+ipcMain.handle("updates:install", () => {
+  if (!app.isPackaged || !autoUpdater) return;
+  autoUpdater.quitAndInstall(false, true);
 });

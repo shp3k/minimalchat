@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { UserDTO } from "@minimalchat/shared";
 import { TopBar } from "@/components/TopBar";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { api } from "@/lib/api";
 import type { Language } from "@/lib/i18n";
 import { clearStoredUser, getStoredLanguage, storeLanguage, storeUser } from "@/lib/storage";
@@ -50,6 +51,7 @@ export function App() {
   return (
     <div className="flex h-screen min-h-[600px] min-w-[900px] flex-col overflow-hidden bg-background text-primaryText">
       <TopBar />
+      <UpdateBanner language={language} />
       {checkingSession ? (
         <main className="grid flex-1 place-items-center bg-background">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/10 border-t-accent" />

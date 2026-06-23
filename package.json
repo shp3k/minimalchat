@@ -1,6 +1,6 @@
 {
   "name": "minimalchat",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "MinimalChat desktop messenger built with Electron, React, Express, Socket.IO, Prisma and SQLite.",
   "workspaces": [

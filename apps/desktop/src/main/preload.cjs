@@ -24,3 +24,13 @@ contextBridge.exposeInMainWorld("minimalChatNotifications", {
     return () => ipcRenderer.removeListener("notification:message-click", listener);
   }
 });
+
+contextBridge.exposeInMainWorld("minimalChatUpdates", {
+  check: () => ipcRenderer.invoke("updates:check"),
+  install: () => ipcRenderer.invoke("updates:install"),
+  onStatus: (handler) => {
+    const listener = (_event, status) => handler(status);
+    ipcRenderer.on("updates:status", listener);
+    return () => ipcRenderer.removeListener("updates:status", listener);
+  }
+});

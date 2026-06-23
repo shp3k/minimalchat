@@ -1,5 +1,13 @@
 export {};
 
+type MinimalChatUpdateStatus =
+  | { state: "checking" }
+  | { state: "available"; version?: string }
+  | { state: "not-available" }
+  | { state: "downloading"; percent?: number; transferred?: number; total?: number }
+  | { state: "downloaded"; version?: string }
+  | { state: "error"; message?: string };
+
 declare global {
   interface Window {
     minimalChatWindow?: {
@@ -23,6 +31,11 @@ declare global {
         force?: boolean;
       }) => Promise<boolean>;
       onMessageClick: (callback: (payload: { senderId: string }) => void) => () => void;
+    };
+    minimalChatUpdates?: {
+      check: () => Promise<{ ok: boolean; code?: string }>;
+      install: () => Promise<void>;
+      onStatus: (handler: (status: MinimalChatUpdateStatus) => void) => () => void;
     };
   }
 }
