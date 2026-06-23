@@ -87,6 +87,8 @@ export const translations = {
       invalidCredentials: "Invalid email or password",
       emailNotConfirmed: "Email confirmation is enabled in Supabase. Confirm this user or turn it off in Authentication settings.",
       userExists: "User with this email already exists",
+      weakPassword: "Password is too short or too weak. Use at least 6 characters.",
+      signupDisabled: "Registration is disabled in Supabase Auth settings.",
       handleTaken: "This @handle is already taken",
       invalidHandle: "Use 3-24 latin letters, numbers or underscores.",
       invalidAvatar: "Choose a png, jpeg, webp or gif image under 1 MB.",
@@ -180,6 +182,8 @@ export const translations = {
       invalidCredentials: "Неверный email или пароль",
       emailNotConfirmed: "В Supabase включено подтверждение email. Подтвердите пользователя или отключите подтверждение в Authentication settings.",
       userExists: "Пользователь с таким email уже существует",
+      weakPassword: "Пароль слишком короткий или слабый. Используйте минимум 6 символов.",
+      signupDisabled: "Регистрация отключена в настройках Supabase Auth.",
       handleTaken: "Этот @ник уже занят",
       invalidHandle: "Используйте 3-24 латинские буквы, цифры или подчёркивания.",
       invalidAvatar: "Выберите png, jpeg, webp или gif до 1 МБ.",
@@ -203,6 +207,8 @@ export function translateError(error: unknown, t: Translation) {
     if (code === "INVALID_CREDENTIALS") return t.errors.invalidCredentials;
     if (code === "EMAIL_NOT_CONFIRMED") return t.errors.emailNotConfirmed;
     if (code === "USER_EXISTS") return t.errors.userExists;
+    if (code === "WEAK_PASSWORD") return t.errors.weakPassword;
+    if (code === "SIGNUP_DISABLED") return t.errors.signupDisabled;
     if (code === "HANDLE_TAKEN") return t.errors.handleTaken;
     if (code === "INVALID_HANDLE") return t.errors.invalidHandle;
     if (code === "INVALID_AVATAR") return t.errors.invalidAvatar;

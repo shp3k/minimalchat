@@ -21,8 +21,31 @@ export class ApiRequestError extends Error {
   }
 }
 
-function isEmailNotConfirmedError(error: { message?: string } | null | undefined) {
-  return String(error?.message ?? "").toLowerCase().includes("email not confirmed");
+type AuthLikeError = {
+  code?: string;
+  message?: string;
+  name?: string;
+  status?: number;
+};
+
+function getAuthErrorCode(error: AuthLikeError | null | undefined) {
+  const text = `${error?.code ?? ""} ${error?.name ?? ""} ${error?.message ?? ""}`.toLowerCase();
+
+  if (text.includes("email not confirmed")) return "EMAIL_NOT_CONFIRMED";
+  if (error?.status === 422 || text.includes("user_already_exists") || text.includes("already registered") || text.includes("already exists")) {
+    return "USER_EXISTS";
+  }
+  if (text.includes("password") && (text.includes("short") || text.includes("weak") || text.includes("6") || text.includes("six"))) {
+    return "WEAK_PASSWORD";
+  }
+  if (text.includes("signup") && (text.includes("disabled") || text.includes("not allowed"))) {
+    return "SIGNUP_DISABLED";
+  }
+  if (text.includes("invalid login credentials")) {
+    return "INVALID_CREDENTIALS";
+  }
+
+  return "VALIDATION_ERROR";
 }
 
 type UserRow = {
@@ -238,7 +261,7 @@ export const api = {
     });
 
     if (auth.error) {
-      throw new ApiRequestError(auth.error.message, auth.error.status === 422 ? "USER_EXISTS" : "VALIDATION_ERROR");
+      throw new ApiRequestError(auth.error.message, getAuthErrorCode(auth.error));
     }
 
     if (!auth.data.user) {
@@ -249,7 +272,7 @@ export const api = {
       const login = await supabase.auth.signInWithPassword({ email: payload.email, password: payload.password });
 
       if (login.error) {
-        throw new ApiRequestError(login.error.message, isEmailNotConfirmedError(login.error) ? "EMAIL_NOT_CONFIRMED" : "VALIDATION_ERROR");
+        throw new ApiRequestError(login.error.message, getAuthErrorCode(login.error));
       }
     }
 
@@ -265,7 +288,7 @@ export const api = {
     if (auth.error || !auth.data.user) {
       throw new ApiRequestError(
         auth.error?.message ?? "Invalid email or password",
-        isEmailNotConfirmedError(auth.error) ? "EMAIL_NOT_CONFIRMED" : "INVALID_CREDENTIALS"
+        auth.error ? getAuthErrorCode(auth.error) : "INVALID_CREDENTIALS"
       );
     }
 
