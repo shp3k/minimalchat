@@ -16,6 +16,7 @@ let mainWindow = null;
 let serverProcess = null;
 let updatesReady = false;
 let checkingForUpdates = false;
+let updateDownloaded = false;
 const SERVER_URL = process.env.VITE_API_URL ?? "http://localhost:4000";
 const PROJECT_ROOT = path.resolve(__dirname, "../../../..");
 const SERVER_DIR = path.join(PROJECT_ROOT, "apps", "server");
@@ -177,14 +178,16 @@ function setupAutoUpdates() {
 
   autoUpdater.on("update-available", (info) => {
     checkingForUpdates = false;
+    updateDownloaded = false;
     sendUpdateStatus({ state: "available", version: info.version });
     autoUpdater.downloadUpdate().catch((error) => {
-      sendUpdateStatus({ state: "error", message: error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРєР°С‡Р°С‚СЊ РѕР±РЅРѕРІР»РµРЅРёРµ" });
+      sendUpdateStatus({ state: "error", message: error instanceof Error ? error.message : "Не удалось скачать обновление" });
     });
   });
 
   autoUpdater.on("update-not-available", () => {
     checkingForUpdates = false;
+    updateDownloaded = false;
     sendUpdateStatus({ state: "not-available" });
   });
 
@@ -198,17 +201,18 @@ function setupAutoUpdates() {
   });
 
   autoUpdater.on("update-downloaded", (info) => {
+    updateDownloaded = true;
     sendUpdateStatus({ state: "downloaded", version: info.version });
   });
 
   autoUpdater.on("error", (error) => {
     checkingForUpdates = false;
-    sendUpdateStatus({ state: "error", message: error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕРІРµСЂРёС‚СЊ РѕР±РЅРѕРІР»РµРЅРёРµ" });
+    sendUpdateStatus({ state: "error", message: error instanceof Error ? error.message : "Не удалось проверить обновление" });
   });
 
   autoUpdater.checkForUpdates().catch((error) => {
     checkingForUpdates = false;
-    sendUpdateStatus({ state: "error", message: error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕРІРµСЂРёС‚СЊ РѕР±РЅРѕРІР»РµРЅРёРµ" });
+    sendUpdateStatus({ state: "error", message: error instanceof Error ? error.message : "Не удалось проверить обновление" });
   });
 
   const interval = setInterval(() => {
@@ -310,6 +314,7 @@ ipcMain.handle("app:open-external", (_event, url) => {
   if (typeof url !== "string" || !isSafeExternalUrl(url)) return;
   return shell.openExternal(url);
 });
+ipcMain.handle("app:get-version", () => app.getVersion());
 ipcMain.handle("clipboard:read-text", () => clipboard.readText());
 ipcMain.handle("clipboard:write-text", (_event, value) => {
   clipboard.writeText(String(value ?? ""));
@@ -356,6 +361,15 @@ ipcMain.handle("updates:check", async () => {
   return { ok: true };
 });
 ipcMain.handle("updates:install", () => {
-  if (!app.isPackaged || !autoUpdater) return;
-  autoUpdater.quitAndInstall(false, true);
+  if (!app.isPackaged || !autoUpdater) {
+    return { ok: false, code: "UPDATES_UNAVAILABLE" };
+  }
+
+  if (!updateDownloaded) {
+    return { ok: false, code: "UPDATE_NOT_DOWNLOADED" };
+  }
+
+  sendUpdateStatus({ state: "installing" });
+  setImmediate(() => autoUpdater.quitAndInstall(true, true));
+  return { ok: true };
 });

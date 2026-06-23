@@ -1,6 +1,6 @@
 import type { UserDTO } from "@minimalchat/shared";
-import type { ReactNode } from "react";
-import { Bell, EyeOff, Languages, LogOut, Send, Volume2, X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Bell, EyeOff, Info, Languages, LogOut, Send, Volume2, X } from "lucide-react";
 import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import type { Language, Translation } from "@/lib/i18n";
@@ -32,6 +32,25 @@ export function SettingsModal({
   onLastSeenPrivacyChange,
   onLogout
 }: SettingsModalProps) {
+  const [version, setVersion] = useState("...");
+
+  useEffect(() => {
+    let active = true;
+
+    window.minimalChatApp
+      ?.getVersion()
+      .then((value) => {
+        if (active) setVersion(value);
+      })
+      .catch(() => {
+        if (active) setVersion("-");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <div className="absolute inset-0 z-40 grid place-items-center bg-black/55 px-6 backdrop-blur-sm">
       <motion.div
@@ -110,6 +129,14 @@ export function SettingsModal({
             checked={soundSettings.sentMessages}
             onChange={(sentMessages) => onSoundSettingsChange({ ...soundSettings, sentMessages })}
           />
+        </div>
+
+        <div className="mt-3 flex items-center justify-between rounded-2xl border border-borderSoft bg-background px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-secondaryText">
+            <Info size={16} className="text-accent" />
+            {t.profile.version}
+          </div>
+          <span className="text-sm font-semibold text-primaryText">{version}</span>
         </div>
 
         <Button

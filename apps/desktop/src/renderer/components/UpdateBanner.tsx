@@ -10,6 +10,7 @@ type UpdateStatus =
   | { state: "not-available" }
   | { state: "downloading"; percent?: number; transferred?: number; total?: number }
   | { state: "downloaded"; version?: string }
+  | { state: "installing"; version?: string }
   | { state: "error"; message?: string };
 
 interface UpdateBannerProps {
@@ -23,7 +24,9 @@ const copy = {
     downloading: "Скачиваю обновление",
     downloadingHint: "Можно продолжать пользоваться приложением.",
     downloaded: "Обновление готово",
-    downloadedHint: "Перезапустите MinimalChat, чтобы установить новую версию.",
+    downloadedHint: "MinimalChat установит обновление без дополнительных окон.",
+    installing: "Устанавливаю обновление",
+    installingHint: "Приложение скоро запустится в новой версии.",
     error: "Не удалось обновиться",
     restart: "Перезапустить",
     later: "Позже",
@@ -35,7 +38,9 @@ const copy = {
     downloading: "Downloading update",
     downloadingHint: "You can keep using the app.",
     downloaded: "Update is ready",
-    downloadedHint: "Restart MinimalChat to install the new version.",
+    downloadedHint: "MinimalChat will install it without additional windows.",
+    installing: "Installing update",
+    installingHint: "The app will reopen with the new version shortly.",
     error: "Could not update",
     restart: "Restart",
     later: "Later",
@@ -67,6 +72,7 @@ export function UpdateBanner({ language }: UpdateBannerProps) {
   if (!visible || !status) return null;
 
   const percent = status.state === "downloading" ? Math.max(0, Math.min(100, status.percent ?? 0)) : 0;
+  const installing = status.state === "installing";
 
   return (
     <motion.div
@@ -83,7 +89,7 @@ export function UpdateBanner({ language }: UpdateBannerProps) {
             ) : status.state === "downloaded" ? (
               <RotateCw size={19} />
             ) : (
-              <RefreshCw size={19} className={cn(status.state === "checking" ? "animate-spin" : "")} />
+              <RefreshCw size={19} className={cn(status.state === "checking" || installing ? "animate-spin" : "")} />
             )}
           </div>
           <div className="min-w-0 flex-1">
@@ -98,7 +104,14 @@ export function UpdateBanner({ language }: UpdateBannerProps) {
               <button
                 type="button"
                 className="mt-3 rounded-xl bg-accent px-3 py-2 text-xs font-semibold text-white shadow-accent transition hover:bg-accent2"
-                onClick={() => void window.minimalChatUpdates?.install()}
+                onClick={() => {
+                  setStatus({ state: "installing", version: status.version });
+                  void window.minimalChatUpdates?.install().then((result) => {
+                    if (!result?.ok) {
+                      setStatus({ state: "error", message: text.error });
+                    }
+                  });
+                }}
               >
                 {text.restart}
               </button>
@@ -108,6 +121,7 @@ export function UpdateBanner({ language }: UpdateBannerProps) {
             type="button"
             className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-secondaryText transition hover:bg-white/[0.06] hover:text-primaryText"
             aria-label={text.later}
+            disabled={installing}
             onClick={() => setDismissedState(status.state)}
           >
             <X size={16} />
@@ -123,11 +137,13 @@ function getTitle(status: UpdateStatus, text: (typeof copy)[Language]) {
   if (status.state === "available") return status.version ? `${text.available} ${status.version}` : text.available;
   if (status.state === "downloading") return `${text.downloading} ${status.percent ?? 0}%`;
   if (status.state === "downloaded") return status.version ? `${text.downloaded} ${status.version}` : text.downloaded;
+  if (status.state === "installing") return text.installing;
   return text.error;
 }
 
 function getSubtitle(status: UpdateStatus, text: (typeof copy)[Language]) {
   if (status.state === "downloaded") return text.downloadedHint;
+  if (status.state === "installing") return text.installingHint;
   if (status.state === "error") return status.message ?? text.error;
   if (status.state === "downloading") return text.downloadingHint;
   return text.check;

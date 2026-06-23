@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("minimalChatWindow", {
 
 contextBridge.exposeInMainWorld("minimalChatApp", {
   openExternal: (url) => ipcRenderer.invoke("app:open-external", url),
+  getVersion: () => ipcRenderer.invoke("app:get-version"),
   setUnreadCount: (count) => ipcRenderer.invoke("app:set-unread-count", count)
 });
 

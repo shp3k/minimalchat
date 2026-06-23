@@ -6,6 +6,7 @@ type MinimalChatUpdateStatus =
   | { state: "not-available" }
   | { state: "downloading"; percent?: number; transferred?: number; total?: number }
   | { state: "downloaded"; version?: string }
+  | { state: "installing"; version?: string }
   | { state: "error"; message?: string };
 
 declare global {
@@ -17,6 +18,7 @@ declare global {
     };
     minimalChatApp?: {
       openExternal: (url: string) => Promise<void>;
+      getVersion: () => Promise<string>;
       setUnreadCount: (count: number) => Promise<void>;
     };
     minimalChatClipboard?: {
@@ -35,7 +37,7 @@ declare global {
     };
     minimalChatUpdates?: {
       check: () => Promise<{ ok: boolean; code?: string }>;
-      install: () => Promise<void>;
+      install: () => Promise<{ ok: boolean; code?: string }>;
       onStatus: (handler: (status: MinimalChatUpdateStatus) => void) => () => void;
     };
   }
