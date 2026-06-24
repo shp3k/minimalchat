@@ -1,4 +1,13 @@
-import { ChangeEvent, FormEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  ClipboardEvent,
+  FormEvent,
+  KeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+  useEffect,
+  useRef,
+  useState
+} from "react";
 import type { MessageDTO } from "@minimalchat/shared";
 import { ClipboardPaste, FileIcon, Mic, Paperclip, SendHorizonal, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -165,14 +174,14 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
     event.stopPropagation();
 
     const rect = inputBoxRef.current?.getBoundingClientRect();
-    const clipboardText = (await readClipboardText()).trim();
+    const clipboard = await readClipboardContent();
     const rawX = rect ? event.clientX - rect.left : 16;
     const rawY = rect ? event.clientY - rect.top : 16;
 
     setPasteMenu({
       x: Math.min(Math.max(rawX, 8), Math.max(8, (rect?.width ?? 180) - 168)),
       y: Math.max(rawY - 46, 8),
-      canPaste: Boolean(clipboardText)
+      canPaste: Boolean(clipboard.text.trim() || clipboard.image)
     });
   }
 
@@ -181,7 +190,15 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
   }
 
   async function pasteFromClipboardAsync() {
-    const value = await readClipboardText();
+    const clipboard = await readClipboardContent();
+
+    if (clipboard.image) {
+      attachClipboardImage(clipboard.image);
+      setPasteMenu(null);
+      return;
+    }
+
+    const value = clipboard.text;
     if (!value) return;
 
     const textarea = textareaRef.current;
@@ -200,6 +217,36 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
       textarea?.focus();
       textarea?.setSelectionRange(nextCursor, nextCursor);
     });
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const image = Array.from(event.clipboardData.files).find((item) => item.type.startsWith("image/"));
+
+    if (!image) return;
+
+    event.preventDefault();
+    attachClipboardImage(image);
+  }
+
+  function attachClipboardImage(image: File) {
+    if (image.size > MAX_FILE_SIZE) {
+      setFile(null);
+      setFileError(t.chat.fileTooLarge);
+      return;
+    }
+
+    const extension = getImageExtension(image.type);
+    const fileName = image.name && image.name !== "image.png"
+      ? image.name
+      : `clipboard-image-${Date.now()}.${extension}`;
+    const clipboardFile = new File([image], fileName, {
+      type: image.type || "image/png",
+      lastModified: Date.now()
+    });
+
+    setFile(clipboardFile);
+    setFileError("");
+    stopTyping();
   }
 
   async function startRecording() {
@@ -424,6 +471,7 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
             disabled={disabled}
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder={disabled ? t.chat.connecting : t.chat.writeMessage}
             className="max-h-32 min-h-[44px] border-0 bg-transparent py-2.5 focus:ring-0"
           />
@@ -456,16 +504,47 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
   );
 }
 
-async function readClipboardText() {
+async function readClipboardContent() {
   if (window.minimalChatClipboard) {
-    return window.minimalChatClipboard.readText();
+    const [textResult, imageResult] = await Promise.allSettled([
+      window.minimalChatClipboard.readText(),
+      window.minimalChatClipboard.readImage?.() ?? Promise.resolve({ ok: false })
+    ]);
+    const text = textResult.status === "fulfilled" ? textResult.value : "";
+    const image = imageResult.status === "fulfilled" ? imageResult.value : { ok: false };
+
+    return {
+      text,
+      image: image.ok && image.dataUrl ? await dataUrlToImageFile(image.dataUrl).catch(() => null) : null
+    };
   }
 
   try {
-    return await navigator.clipboard.readText();
+    return {
+      text: await navigator.clipboard.readText(),
+      image: null
+    };
   } catch {
-    return "";
+    return { text: "", image: null };
   }
+}
+
+async function dataUrlToImageFile(dataUrl: string) {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  const extension = getImageExtension(blob.type);
+
+  return new File([blob], `clipboard-image-${Date.now()}.${extension}`, {
+    type: blob.type || "image/png",
+    lastModified: Date.now()
+  });
+}
+
+function getImageExtension(mimeType: string) {
+  if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/webp") return "webp";
+  if (mimeType === "image/gif") return "gif";
+  return "png";
 }
 
 function getMessagePreview(message: MessageDTO, t: Translation) {

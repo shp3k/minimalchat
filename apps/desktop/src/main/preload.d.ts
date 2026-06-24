@@ -23,6 +23,7 @@ declare global {
     };
     minimalChatClipboard?: {
       readText: () => Promise<string>;
+      readImage: () => Promise<{ ok: boolean; dataUrl?: string; size?: number; code?: string }>;
       writeText: (value: string) => Promise<void>;
       writeImage: (url: string) => Promise<{ ok: boolean; code?: string }>;
     };

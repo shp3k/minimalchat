@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("minimalChatApp", {
 
 contextBridge.exposeInMainWorld("minimalChatClipboard", {
   readText: () => ipcRenderer.invoke("clipboard:read-text"),
+  readImage: () => ipcRenderer.invoke("clipboard:read-image"),
   writeText: (value) => ipcRenderer.invoke("clipboard:write-text", value),
   writeImage: (url) => ipcRenderer.invoke("clipboard:write-image", url)
 });

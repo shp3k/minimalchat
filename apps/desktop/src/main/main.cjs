@@ -318,6 +318,25 @@ ipcMain.handle("app:open-external", (_event, url) => {
 });
 ipcMain.handle("app:get-version", () => app.getVersion());
 ipcMain.handle("clipboard:read-text", () => clipboard.readText());
+ipcMain.handle("clipboard:read-image", () => {
+  const image = clipboard.readImage();
+
+  if (image.isEmpty()) {
+    return { ok: false, code: "IMAGE_NOT_FOUND" };
+  }
+
+  const buffer = image.toPNG();
+
+  if (!buffer.length || buffer.length > 50 * 1024 * 1024) {
+    return { ok: false, code: "INVALID_IMAGE_SIZE" };
+  }
+
+  return {
+    ok: true,
+    dataUrl: `data:image/png;base64,${buffer.toString("base64")}`,
+    size: buffer.length
+  };
+});
 ipcMain.handle("clipboard:write-text", (_event, value) => {
   clipboard.writeText(String(value ?? ""));
 });
