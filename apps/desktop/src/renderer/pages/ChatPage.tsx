@@ -786,6 +786,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                 messages={messages}
                 loading={messagesLoading}
                 emptyText={selectedUser.isSavedMessages ? t.chat.savedMessagesEmpty : undefined}
+                savedMessages={selectedUser.isSavedMessages}
                 t={t}
                 pinnedMessage={pinnedMessage}
                 onEditMessage={editMessage}
@@ -890,9 +891,7 @@ function bumpUserWithMessage(
     lastMessage: message,
     unreadCount: otherUserId === selectedUserId ? 0 : matched.unreadCount + unreadIncrement
   };
-  const savedIndex = next.findIndex((item) => item.isSavedMessages);
-  next.splice(matched.isSavedMessages || savedIndex === -1 ? 0 : savedIndex + 1, 0, updated);
-  return next;
+  return sortConversationUsers([updated, ...next]);
 }
 
 function getMessageAuthorName(message: MessageDTO, currentUser: UserDTO, selectedUser: UserDTO) {
@@ -931,14 +930,7 @@ function upsertUserWithMessage(
     unreadCount: existing?.unreadCount ?? targetUser.unreadCount ?? 0
   };
 
-  if (updated.isSavedMessages) {
-    return [updated, ...rest];
-  }
-
-  const saved = rest.find((item) => item.isSavedMessages);
-  return saved
-    ? [saved, updated, ...rest.filter((item) => item.id !== saved.id)]
-    : [updated, ...rest];
+  return sortConversationUsers([updated, ...rest]);
 }
 
 function withSavedMessages(users: UserListItemDTO[], currentUser: UserDTO) {
@@ -951,5 +943,13 @@ function withSavedMessages(users: UserListItemDTO[], currentUser: UserDTO) {
     isSavedMessages: true
   };
 
-  return [savedMessages, ...users.filter((item) => item.id !== currentUser.id)];
+  return sortConversationUsers([savedMessages, ...users.filter((item) => item.id !== currentUser.id)]);
+}
+
+function sortConversationUsers(users: UserListItemDTO[]) {
+  return [...users].sort((first, second) => {
+    const firstTime = first.lastMessage ? new Date(first.lastMessage.sentAt).getTime() : 0;
+    const secondTime = second.lastMessage ? new Date(second.lastMessage.sentAt).getTime() : 0;
+    return secondTime - firstTime;
+  });
 }

@@ -12,6 +12,7 @@ interface MessageListProps {
   messages: MessageDTO[];
   loading: boolean;
   emptyText?: string;
+  savedMessages?: boolean;
   t: Translation;
   pinnedMessage: MessageDTO | null;
   onEditMessage: (message: MessageDTO, text: string) => Promise<void>;
@@ -31,6 +32,7 @@ export function MessageList({
   messages,
   loading,
   emptyText,
+  savedMessages = false,
   t,
   pinnedMessage,
   onEditMessage,
@@ -151,6 +153,7 @@ export function MessageList({
                   message={message}
                   currentUserId={currentUserId}
                   mine={message.senderId === currentUserId}
+                  savedMessages={savedMessages}
                   highlighted={highlightedId === message.id}
                   popupType={activePopup?.messageId === message.id ? activePopup.type : null}
                   popupPlacement={activePopup?.messageId === message.id ? activePopup.placement : "top"}

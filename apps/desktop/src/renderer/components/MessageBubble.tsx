@@ -25,6 +25,7 @@ interface MessageBubbleProps {
   message: MessageDTO;
   currentUserId: string;
   mine: boolean;
+  savedMessages?: boolean;
   t: Translation;
   highlighted?: boolean;
   popupType: "menu" | "delete" | "reactions" | null;
@@ -46,6 +47,7 @@ export function MessageBubble({
   message,
   currentUserId,
   mine,
+  savedMessages = false,
   t,
   highlighted,
   popupType,
@@ -166,12 +168,17 @@ export function MessageBubble({
               key="delete-menu"
               t={t}
               mine={mine}
+              savedMessages={savedMessages}
               placement={popupPlacement}
               onDeleteForMe={async () => {
                 await onDelete(message, "me");
                 onPopupChange(null);
               }}
               onDeleteForEveryone={async () => {
+                await onDelete(message, "all");
+                onPopupChange(null);
+              }}
+              onDeleteSaved={async () => {
                 await onDelete(message, "all");
                 onPopupChange(null);
               }}
@@ -521,13 +528,24 @@ function ReactionSummary({
 interface DeleteMenuProps {
   t: Translation;
   mine: boolean;
+  savedMessages: boolean;
   placement: "top" | "bottom";
   onDeleteForMe: () => void | Promise<void>;
   onDeleteForEveryone: () => void | Promise<void>;
+  onDeleteSaved: () => void | Promise<void>;
   onCancel: () => void;
 }
 
-function DeleteMenu({ t, mine, placement, onDeleteForMe, onDeleteForEveryone, onCancel }: DeleteMenuProps) {
+function DeleteMenu({
+  t,
+  mine,
+  savedMessages,
+  placement,
+  onDeleteForMe,
+  onDeleteForEveryone,
+  onDeleteSaved,
+  onCancel
+}: DeleteMenuProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: placement === "top" ? 8 : -8, scale: 0.96 }}
@@ -542,8 +560,14 @@ function DeleteMenu({ t, mine, placement, onDeleteForMe, onDeleteForEveryone, on
       onClick={(event) => event.stopPropagation()}
     >
       <p className="px-2 pb-2 pt-1 text-sm font-semibold">{t.chat.deleteQuestion}</p>
-      <MenuButton icon={<Trash2 size={15} />} label={t.chat.deleteForMe} onClick={onDeleteForMe} />
-      <MenuButton danger icon={<Trash2 size={15} />} label={t.chat.deleteForEveryone} onClick={onDeleteForEveryone} />
+      {savedMessages ? (
+        <MenuButton danger icon={<Trash2 size={15} />} label={t.chat.deleteMessage} onClick={onDeleteSaved} />
+      ) : (
+        <>
+          <MenuButton icon={<Trash2 size={15} />} label={t.chat.deleteForMe} onClick={onDeleteForMe} />
+          <MenuButton danger icon={<Trash2 size={15} />} label={t.chat.deleteForEveryone} onClick={onDeleteForEveryone} />
+        </>
+      )}
       <MenuButton icon={<X size={15} />} label={t.chat.cancelEdit} onClick={onCancel} />
     </motion.div>
   );
