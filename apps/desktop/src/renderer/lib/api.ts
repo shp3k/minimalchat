@@ -633,6 +633,56 @@ export const api = {
     return { ok: true, id: messageId, mode };
   },
 
+  async clearConversation(currentUserId: string, otherUserId: string, mode: "me" | "all") {
+    const conversationFilter =
+      `and(senderId.eq.${currentUserId},receiverId.eq.${otherUserId}),` +
+      `and(senderId.eq.${otherUserId},receiverId.eq.${currentUserId})`;
+
+    if (mode === "all") {
+      const result = await supabase.from("Message").delete().or(conversationFilter);
+
+      if (result.error) {
+        throw new ApiRequestError(result.error.message, result.error.code);
+      }
+
+      return { ok: true, mode };
+    }
+
+    if (currentUserId === otherUserId) {
+      const result = await supabase
+        .from("Message")
+        .update({ hiddenForSender: true, hiddenForReceiver: true })
+        .eq("senderId", currentUserId)
+        .eq("receiverId", currentUserId);
+
+      if (result.error) {
+        throw new ApiRequestError(result.error.message, result.error.code);
+      }
+
+      return { ok: true, mode };
+    }
+
+    const [sent, received] = await Promise.all([
+      supabase
+        .from("Message")
+        .update({ hiddenForSender: true })
+        .eq("senderId", currentUserId)
+        .eq("receiverId", otherUserId),
+      supabase
+        .from("Message")
+        .update({ hiddenForReceiver: true })
+        .eq("senderId", otherUserId)
+        .eq("receiverId", currentUserId)
+    ]);
+
+    const error = sent.error ?? received.error;
+    if (error) {
+      throw new ApiRequestError(error.message, error.code);
+    }
+
+    return { ok: true, mode };
+  },
+
   async markMessagesDelivered(currentUserId: string, otherUserId: string): Promise<{ messages: MessageDTO[] }> {
     const result = await supabase
       .from("Message")

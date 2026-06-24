@@ -3,6 +3,7 @@ import type { MessageDTO, OnlineUsersDTO, TypingDTO, UserDTO, UserListItemDTO } 
 import { Bookmark } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { ChatInput } from "@/components/ChatInput";
+import { ChatHistoryMenu } from "@/components/ChatHistoryMenu";
 import { EmptyChatState } from "@/components/EmptyChatState";
 import { ForwardMessageModal } from "@/components/ForwardMessageModal";
 import { ImageViewer } from "@/components/ImageViewer";
@@ -54,6 +55,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const [forwardingUserId, setForwardingUserId] = useState<string | null>(null);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [selectionBusy, setSelectionBusy] = useState(false);
+  const [clearHistoryBusy, setClearHistoryBusy] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [privacyLoading, setPrivacyLoading] = useState(false);
   const [soundSettings, setSoundSettings] = useState<SoundSettings>(() => getStoredSoundSettings());
@@ -66,6 +68,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const selectedUserRef = useRef<UserListItemDTO | null>(null);
   const usersRef = useRef<UserListItemDTO[]>([]);
   const typingTimersRef = useRef<Record<string, number>>({});
+  const usersRefreshTimerRef = useRef<number | null>(null);
   const soundSettingsRef = useRef(soundSettings);
   const t = getTranslation(language);
   const forwardTarget = forwardTargets[0] ?? null;
@@ -120,6 +123,9 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     return () => {
       Object.values(typingTimersRef.current).forEach((timer) => window.clearTimeout(timer));
       typingTimersRef.current = {};
+      if (usersRefreshTimerRef.current !== null) {
+        window.clearTimeout(usersRefreshTimerRef.current);
+      }
     };
   }, []);
 
@@ -290,7 +296,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     });
     chatSocket.on("message:delete", (payload: { id: string }) => {
       setMessages((current) => current.filter((item) => item.id !== payload.id));
-      void loadUsers(true);
+      scheduleUsersRefresh();
     });
     chatSocket.on(
       "reaction:update",
@@ -387,6 +393,17 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
         setUsersLoading(false);
       }
     }
+  }
+
+  function scheduleUsersRefresh() {
+    if (usersRefreshTimerRef.current !== null) {
+      window.clearTimeout(usersRefreshTimerRef.current);
+    }
+
+    usersRefreshTimerRef.current = window.setTimeout(() => {
+      usersRefreshTimerRef.current = null;
+      void loadUsers(true);
+    }, 160);
   }
 
   async function markConversationRead(otherUserId: string) {
@@ -803,6 +820,36 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     }
   }
 
+  async function clearChatHistory(mode: "me" | "all") {
+    if (!selectedUser || clearHistoryBusy) return false;
+
+    setClearHistoryBusy(true);
+    setError("");
+    try {
+      await api.clearConversation(user.id, selectedUser.id, mode);
+      setMessages([]);
+      setReplyTarget(null);
+      setSelectedMessageIds([]);
+      setPinnedCursor(0);
+      setUsers((current) =>
+        sortConversationUsers(
+          current.map((item) =>
+            item.id === selectedUser.id
+              ? { ...item, lastMessage: null, unreadCount: 0 }
+              : item
+          )
+        )
+      );
+      scheduleUsersRefresh();
+      return true;
+    } catch (caught) {
+      setError(translateError(caught, t));
+      return false;
+    } finally {
+      setClearHistoryBusy(false);
+    }
+  }
+
   async function updateLastSeenPrivacy(hideLastSeen: boolean) {
     setPrivacyLoading(true);
     setError("");
@@ -890,7 +937,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
               transition={{ duration: 0.18 }}
               className="flex min-h-0 flex-1 flex-col"
             >
-              <header className="flex h-[82px] shrink-0 items-center border-b border-borderSoft bg-background/80 px-7">
+              <header className="flex h-[82px] shrink-0 items-center justify-between border-b border-borderSoft bg-background/80 px-7">
                 <div className="flex items-center gap-4">
                   {selectedUser.isSavedMessages ? (
                     <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-accent text-white shadow-accent">
@@ -928,6 +975,12 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                     </AnimatePresence>
                   </div>
                 </div>
+                <ChatHistoryMenu
+                  savedMessages={Boolean(selectedUser.isSavedMessages)}
+                  busy={clearHistoryBusy}
+                  t={t}
+                  onClear={clearChatHistory}
+                />
               </header>
               <MessageList
                 currentUserId={user.id}

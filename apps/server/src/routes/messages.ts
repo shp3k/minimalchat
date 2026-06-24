@@ -278,6 +278,50 @@ router.post("/:messageId/reactions", async (req, res, next) => {
   }
 });
 
+router.delete("/conversation/:userId", async (req, res, next) => {
+  try {
+    const data = actionSchema.parse(req.body);
+    const otherUserId = req.params.userId;
+    const conversation = {
+      OR: [
+        { senderId: data.currentUserId, receiverId: otherUserId },
+        { senderId: otherUserId, receiverId: data.currentUserId }
+      ]
+    };
+
+    if (data.mode === "me") {
+      if (data.currentUserId === otherUserId) {
+        await prisma.message.updateMany({
+          where: conversation,
+          data: { hiddenForSender: true, hiddenForReceiver: true }
+        });
+      } else {
+        await prisma.$transaction([
+          prisma.message.updateMany({
+            where: { senderId: data.currentUserId, receiverId: otherUserId },
+            data: { hiddenForSender: true }
+          }),
+          prisma.message.updateMany({
+            where: { senderId: otherUserId, receiverId: data.currentUserId },
+            data: { hiddenForReceiver: true }
+          })
+        ]);
+      }
+
+      res.json({ ok: true, mode: "me" });
+      return;
+    }
+
+    const messages = await prisma.message.findMany({ where: conversation });
+    await prisma.message.deleteMany({ where: conversation });
+    messages.forEach((message) => emitMessageDelete(toMessageDTO(message)));
+
+    res.json({ ok: true, mode: "all" });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.delete("/:messageId", async (req, res, next) => {
   try {
     const data = actionSchema.parse(req.body);
