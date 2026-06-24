@@ -127,9 +127,12 @@ function createWindow() {
     mainWindow.show();
   });
 
-  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
-    const prefix = ["log", "warn", "error", "debug"][level] ?? "console";
-    console.log(`[renderer:${prefix}] ${message} (${sourceId}:${line})`);
+  mainWindow.webContents.on("console-message", (details) => {
+    if (details.message.includes("Download the React DevTools")) return;
+
+    console.log(
+      `[renderer:${details.level}] ${details.message} (${details.sourceId}:${details.lineNumber})`
+    );
   });
 
   mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {

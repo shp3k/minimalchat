@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { MessageDTO } from "@minimalchat/shared";
 import { Pin } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { MessageBubble } from "@/components/MessageBubble";
 import type { Translation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -270,13 +270,12 @@ export function MessageList({
         </motion.div>
       ) : (
         <div className="flex min-h-full flex-col justify-end gap-2.5">
-          <AnimatePresence initial={false}>
-            {messages.map((message) => {
-              const replyToMessage = message.replyToMessageId
-                ? messages.find((item) => item.id === message.replyToMessageId) ?? null
-                : null;
+          {messages.map((message) => {
+            const replyToMessage = message.replyToMessageId
+              ? messages.find((item) => item.id === message.replyToMessageId) ?? null
+              : null;
 
-              return (
+            return (
               <div
                 key={message.id}
                 onMouseDown={(event) => startDragSelection(message.id, event)}
@@ -326,9 +325,8 @@ export function MessageList({
                   }}
                 />
               </div>
-              );
-            })}
-          </AnimatePresence>
+            );
+          })}
           <div ref={endRef} />
         </div>
       )}
