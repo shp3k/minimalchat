@@ -53,6 +53,13 @@ export function MessageList({
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef(new Map<string, HTMLDivElement>());
   const selectionAnchorRef = useRef<string | null>(null);
+  const dragSelectionRef = useRef<{
+    startId: string;
+    startY: number;
+    active: boolean;
+    baseIds: string[];
+  } | null>(null);
+  const suppressClickRef = useRef(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [activePopup, setActivePopup] = useState<{
     messageId: string;
@@ -78,6 +85,83 @@ export function MessageList({
       onSelectionChange(nextIds);
     }
   }, [messages, onSelectionChange, selectedMessageIds]);
+
+  useEffect(() => {
+    function handleMouseMove(event: globalThis.MouseEvent) {
+      const drag = dragSelectionRef.current;
+      if (!drag) return;
+
+      if (!drag.active && Math.abs(event.clientY - drag.startY) >= 5) {
+        drag.active = true;
+        suppressClickRef.current = true;
+        setActivePopup(null);
+        window.getSelection()?.removeAllRanges();
+        selectDragRange(drag.startId);
+      }
+
+      if (!drag.active) return;
+
+      event.preventDefault();
+      const scrollArea = scrollAreaRef.current;
+      if (!scrollArea) return;
+
+      const bounds = scrollArea.getBoundingClientRect();
+      if (event.clientY < bounds.top + 36) {
+        scrollArea.scrollBy({ top: -14 });
+      } else if (event.clientY > bounds.bottom - 36) {
+        scrollArea.scrollBy({ top: 14 });
+      }
+    }
+
+    function handleMouseUp() {
+      const wasActive = Boolean(dragSelectionRef.current?.active);
+      dragSelectionRef.current = null;
+
+      if (wasActive) {
+        window.setTimeout(() => {
+          suppressClickRef.current = false;
+        }, 0);
+      }
+    }
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [messages, onSelectionChange]);
+
+  function selectDragRange(endId: string) {
+    const drag = dragSelectionRef.current;
+    if (!drag) return;
+
+    const startIndex = messages.findIndex((message) => message.id === drag.startId);
+    const endIndex = messages.findIndex((message) => message.id === endId);
+    if (startIndex === -1 || endIndex === -1) return;
+
+    const [start, end] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+    const rangeIds = messages.slice(start, end + 1).map((message) => message.id);
+    onSelectionChange(Array.from(new Set([...drag.baseIds, ...rangeIds])));
+  }
+
+  function startDragSelection(messageId: string, event: MouseEvent<HTMLDivElement>) {
+    if (event.button !== 0 || isInteractiveTarget(event.target)) return;
+
+    dragSelectionRef.current = {
+      startId: messageId,
+      startY: event.clientY,
+      active: false,
+      baseIds: event.ctrlKey || event.metaKey ? selectedMessageIds : []
+    };
+    selectionAnchorRef.current = messageId;
+    event.preventDefault();
+  }
+
+  function continueDragSelection(messageId: string) {
+    if (!dragSelectionRef.current?.active) return;
+    selectDragRange(messageId);
+  }
 
   function selectMessage(messageId: string, event?: MouseEvent<HTMLDivElement>) {
     const current = new Set(selectedMessageIds);
@@ -105,6 +189,12 @@ export function MessageList({
   }
 
   function handleMessageClick(messageId: string, event: MouseEvent<HTMLDivElement>) {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      event.preventDefault();
+      return;
+    }
+
     const selectionMode = selectedMessageIds.length > 0;
     if (!selectionMode && !event.ctrlKey && !event.metaKey && !event.shiftKey) return;
 
@@ -189,6 +279,8 @@ export function MessageList({
               return (
               <div
                 key={message.id}
+                onMouseDown={(event) => startDragSelection(message.id, event)}
+                onMouseEnter={() => continueDragSelection(message.id)}
                 onClick={(event) => handleMessageClick(message.id, event)}
                 ref={(element) => {
                   if (element) {
@@ -247,4 +339,8 @@ export function MessageList({
 
 function getMessageAuthorName(message: MessageDTO, currentUserId: string, currentUserName: string, otherUserName: string) {
   return message.senderId === currentUserId ? currentUserName : otherUserName;
+}
+
+function isInteractiveTarget(target: EventTarget | null) {
+  return target instanceof Element && Boolean(target.closest("button, a, input, textarea, video, audio, [role='button']"));
 }
