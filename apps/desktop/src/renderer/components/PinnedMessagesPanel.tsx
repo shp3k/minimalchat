@@ -23,11 +23,6 @@ export function PinnedMessagesPanel({
 }: PinnedMessagesPanelProps) {
   const [listOpen, setListOpen] = useState(false);
   const activeMessage = messages[activeIndex] ?? messages[0];
-  if (!activeMessage) return null;
-
-  function move(offset: number) {
-    onActiveIndexChange((activeIndex + offset + messages.length) % messages.length);
-  }
 
   useEffect(() => {
     if (!listOpen) return;
@@ -42,6 +37,12 @@ export function PinnedMessagesPanel({
     window.addEventListener("keydown", closeOnEscape, true);
     return () => window.removeEventListener("keydown", closeOnEscape, true);
   }, [listOpen]);
+
+  if (!activeMessage) return null;
+
+  function move(offset: number) {
+    onActiveIndexChange((activeIndex + offset + messages.length) % messages.length);
+  }
 
   return (
     <>
