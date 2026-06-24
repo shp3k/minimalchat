@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MessageDTO, OnlineUsersDTO, TypingDTO, UserDTO, UserListItemDTO } from "@minimalchat/shared";
 import { AnimatePresence, motion } from "motion/react";
-import { Wifi, WifiOff } from "lucide-react";
 import { ChatInput } from "@/components/ChatInput";
 import { EmptyChatState } from "@/components/EmptyChatState";
 import { ImageViewer } from "@/components/ImageViewer";
@@ -645,7 +644,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
               transition={{ duration: 0.18 }}
               className="flex min-h-0 flex-1 flex-col"
             >
-              <header className="flex h-[82px] shrink-0 items-center justify-between border-b border-borderSoft bg-background/80 px-7">
+              <header className="flex h-[82px] shrink-0 items-center border-b border-borderSoft bg-background/80 px-7">
                 <div className="flex items-center gap-4">
                   <Avatar username={selectedUser.username} avatarUrl={selectedUser.avatarUrl} online={selectedUser.online} className="h-12 w-12 rounded-full" />
                   <div>
@@ -676,10 +675,6 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                       )}
                     </AnimatePresence>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 rounded-2xl border border-borderSoft bg-panel px-3 py-2 text-xs text-secondaryText">
-                  {selectedUser.online ? <Wifi size={15} className="text-emerald-400" /> : <WifiOff size={15} className="text-red-300" />}
-                  {selectedUserPresenceText}
                 </div>
               </header>
               <MessageList
