@@ -15,6 +15,8 @@ interface MessageListProps {
   emptyText?: string;
   savedMessages?: boolean;
   selectedMessageIds: string[];
+  searchQuery?: string;
+  activeSearchMessageId?: string | null;
   t: Translation;
   pinnedMessage: MessageDTO | null;
   onEditMessage: (message: MessageDTO, text: string) => Promise<void>;
@@ -37,6 +39,8 @@ export function MessageList({
   emptyText,
   savedMessages = false,
   selectedMessageIds,
+  searchQuery = "",
+  activeSearchMessageId = null,
   t,
   pinnedMessage,
   onEditMessage,
@@ -76,6 +80,13 @@ export function MessageList({
       setActivePopup(null);
     }
   }, [activePopup, messages]);
+
+  useEffect(() => {
+    if (!activeSearchMessageId) return;
+
+    const element = messageRefs.current.get(activeSearchMessageId);
+    element?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeSearchMessageId]);
 
   useEffect(() => {
     const availableIds = new Set(messages.map((message) => message.id));
@@ -300,7 +311,8 @@ export function MessageList({
                   mine={message.senderId === currentUserId}
                   savedMessages={savedMessages}
                   selected={selectedMessageIds.includes(message.id)}
-                  highlighted={highlightedId === message.id}
+                  searchQuery={searchQuery}
+                  highlighted={highlightedId === message.id || activeSearchMessageId === message.id}
                   popupType={activePopup?.messageId === message.id ? activePopup.type : null}
                   popupPlacement={activePopup?.messageId === message.id ? activePopup.placement : "top"}
                   t={t}

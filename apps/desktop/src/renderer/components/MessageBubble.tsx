@@ -28,6 +28,7 @@ interface MessageBubbleProps {
   mine: boolean;
   savedMessages?: boolean;
   selected?: boolean;
+  searchQuery?: string;
   t: Translation;
   highlighted?: boolean;
   popupType: "menu" | "delete" | "reactions" | null;
@@ -52,6 +53,7 @@ export function MessageBubble({
   mine,
   savedMessages = false,
   selected = false,
+  searchQuery = "",
   t,
   highlighted,
   popupType,
@@ -265,7 +267,7 @@ export function MessageBubble({
           </div>
         ) : message.text ? (
           <p className={cn("whitespace-pre-wrap break-words text-sm leading-5", attachmentUrl ? "mt-2.5" : "")}>
-            {message.text}
+            <HighlightedText text={message.text} query={searchQuery} mine={mine} />
           </p>
         ) : null}
         <div
@@ -307,6 +309,32 @@ export function MessageBubble({
       </div>
     </motion.div>
   );
+}
+
+function HighlightedText({ text, query, mine }: { text: string; query: string; mine: boolean }) {
+  const value = query.trim();
+  if (!value) return text;
+
+  const expression = new RegExp(`(${escapeRegExp(value)})`, "gi");
+  return text.split(expression).map((part, index) =>
+    part.toLocaleLowerCase() === value.toLocaleLowerCase() ? (
+      <mark
+        key={`${index}-${part}`}
+        className={cn(
+          "rounded px-0.5 text-inherit",
+          mine ? "bg-yellow-300/75 text-zinc-950" : "bg-yellow-300/80 text-zinc-950"
+        )}
+      >
+        {part}
+      </mark>
+    ) : (
+      part
+    )
+  );
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🔥"] as const;

@@ -4,6 +4,7 @@ import { Bookmark } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { ChatInput } from "@/components/ChatInput";
 import { ChatHistoryMenu } from "@/components/ChatHistoryMenu";
+import { ChatSearch } from "@/components/ChatSearch";
 import { EmptyChatState } from "@/components/EmptyChatState";
 import { ForwardMessageModal } from "@/components/ForwardMessageModal";
 import { ImageViewer } from "@/components/ImageViewer";
@@ -56,6 +57,9 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [selectionBusy, setSelectionBusy] = useState(false);
   const [clearHistoryBusy, setClearHistoryBusy] = useState(false);
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
+  const [activeSearchIndex, setActiveSearchIndex] = useState(0);
   const [profileLoading, setProfileLoading] = useState(false);
   const [privacyLoading, setPrivacyLoading] = useState(false);
   const [soundSettings, setSoundSettings] = useState<SoundSettings>(() => getStoredSoundSettings());
@@ -83,6 +87,13 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     const attachmentUrl = getAttachmentUrl(message.attachmentUrl);
     return getCopyMode(message, attachmentUrl) === "image";
   }, [selectedMessages]);
+  const searchResults = useMemo(() => {
+    const value = chatSearchQuery.trim().toLocaleLowerCase();
+    if (!value) return [];
+
+    return messages.filter((message) => message.text.toLocaleLowerCase().includes(value));
+  }, [chatSearchQuery, messages]);
+  const activeSearchMessageId = searchResults[activeSearchIndex]?.id ?? null;
   const totalUnreadCount = useMemo(
     () => users.reduce((sum, item) => sum + Math.max(0, item.unreadCount), 0),
     [users]
@@ -133,7 +144,14 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     setPinnedCursor(0);
     setReplyTarget(null);
     setSelectedMessageIds([]);
+    setChatSearchOpen(false);
+    setChatSearchQuery("");
+    setActiveSearchIndex(0);
   }, [selectedUser?.id]);
+
+  useEffect(() => {
+    setActiveSearchIndex(searchResults.length ? searchResults.length - 1 : 0);
+  }, [chatSearchQuery, searchResults.length]);
 
   useEffect(() => {
     if (replyTarget && !messages.some((message) => message.id === replyTarget.id)) {
@@ -155,6 +173,13 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
         event.preventDefault();
         setForwardTargets([]);
         setForwardQuery("");
+        return;
+      }
+
+      if (chatSearchOpen) {
+        event.preventDefault();
+        setChatSearchOpen(false);
+        setChatSearchQuery("");
         return;
       }
 
@@ -192,7 +217,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [forwardTarget, imagePreview, profileOpen, replyTarget, selectedMessageIds.length, selectedUser, settingsOpen]);
+  }, [chatSearchOpen, forwardTarget, imagePreview, profileOpen, replyTarget, selectedMessageIds.length, selectedUser, settingsOpen]);
 
   useEffect(() => {
     if (!forwardTarget) {
@@ -904,6 +929,22 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     setPinnedCursor((current) => (pinnedMessages.length ? (current + 1) % pinnedMessages.length : 0));
   }
 
+  function closeChatSearch() {
+    setChatSearchOpen(false);
+    setChatSearchQuery("");
+    setActiveSearchIndex(0);
+  }
+
+  function showPreviousSearchResult() {
+    if (!searchResults.length) return;
+    setActiveSearchIndex((current) => (current - 1 + searchResults.length) % searchResults.length);
+  }
+
+  function showNextSearchResult() {
+    if (!searchResults.length) return;
+    setActiveSearchIndex((current) => (current + 1) % searchResults.length);
+  }
+
   return (
     <main className="flex min-h-0 flex-1 overflow-hidden bg-background">
       <Sidebar user={user} unreadCount={totalUnreadCount} onProfileOpen={() => setProfileOpen(true)} />
@@ -975,12 +1016,27 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                     </AnimatePresence>
                   </div>
                 </div>
-                <ChatHistoryMenu
-                  savedMessages={Boolean(selectedUser.isSavedMessages)}
-                  busy={clearHistoryBusy}
-                  t={t}
-                  onClear={clearChatHistory}
-                />
+                <div className="flex items-center gap-1">
+                  <ChatSearch
+                    open={chatSearchOpen}
+                    query={chatSearchQuery}
+                    resultCount={searchResults.length}
+                    activeResult={activeSearchIndex}
+                    t={t}
+                    onOpenChange={(open) => (open ? setChatSearchOpen(true) : closeChatSearch())}
+                    onQueryChange={setChatSearchQuery}
+                    onPrevious={showPreviousSearchResult}
+                    onNext={showNextSearchResult}
+                  />
+                  {!chatSearchOpen ? (
+                    <ChatHistoryMenu
+                      savedMessages={Boolean(selectedUser.isSavedMessages)}
+                      busy={clearHistoryBusy}
+                      t={t}
+                      onClear={clearChatHistory}
+                    />
+                  ) : null}
+                </div>
               </header>
               <MessageList
                 currentUserId={user.id}
@@ -991,6 +1047,8 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                 emptyText={selectedUser.isSavedMessages ? t.chat.savedMessagesEmpty : undefined}
                 savedMessages={selectedUser.isSavedMessages}
                 selectedMessageIds={selectedMessageIds}
+                searchQuery={chatSearchQuery}
+                activeSearchMessageId={activeSearchMessageId}
                 t={t}
                 pinnedMessage={pinnedMessage}
                 onEditMessage={editMessage}
