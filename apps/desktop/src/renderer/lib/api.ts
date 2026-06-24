@@ -134,11 +134,11 @@ export function toMessageDTO(row: MessageRow, reactions: MessageReactionDTO[] = 
 
 export function toMessageReactionDTO(row: MessageReactionRow): MessageReactionDTO {
   return {
-    id: row.id,
-    messageId: row.messageId,
-    userId: row.userId,
-    emoji: row.emoji,
-    createdAt: toUtcIsoString(row.createdAt)
+    id: String(row.id ?? ""),
+    messageId: String(row.messageId ?? ""),
+    userId: String(row.userId ?? ""),
+    emoji: String(row.emoji ?? ""),
+    createdAt: row.createdAt ? toUtcIsoString(row.createdAt) : new Date(0).toISOString()
   };
 }
 

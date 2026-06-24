@@ -1,6 +1,7 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { MessageDTO, OnlineUsersDTO, SendMessageDTO, TypingDTO } from "@minimalchat/shared";
 import { api, toMessageDTO, toMessageReactionDTO, toUserDTO } from "@/lib/api";
+import { getDeletedReactionId } from "@/lib/reactions";
 import { supabase } from "@/lib/supabase";
 
 type Handler = (...args: any[]) => void;
@@ -48,10 +49,14 @@ export class SupabaseChatSocket {
         });
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "MessageReaction" }, (payload) => {
-        this.emitLocal("reaction:update", {
-          action: "removed",
-          reaction: toMessageReactionDTO(payload.old as any)
-        });
+        const reactionId = getDeletedReactionId(payload.old);
+
+        if (reactionId) {
+          this.emitLocal("reaction:update", {
+            action: "removed",
+            reactionId
+          });
+        }
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "User" }, (payload) => {
         this.emitLocal("user:update", toUserDTO(payload.new as any));
@@ -129,7 +134,13 @@ export class SupabaseChatSocket {
   }
 
   private emitLocal(event: string, ...args: unknown[]) {
-    this.handlers.get(event)?.forEach((handler) => handler(...args));
+    this.handlers.get(event)?.forEach((handler) => {
+      try {
+        handler(...args);
+      } catch (error) {
+        console.error(`MinimalChat realtime handler failed: ${event}`, error);
+      }
+    });
   }
 }
 

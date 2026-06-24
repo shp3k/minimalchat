@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type {
-  MessageDTO,
-  MessageReactionDTO,
-  OnlineUsersDTO,
-  TypingDTO,
-  UserDTO,
-  UserListItemDTO
-} from "@minimalchat/shared";
+import type { MessageDTO, OnlineUsersDTO, TypingDTO, UserDTO, UserListItemDTO } from "@minimalchat/shared";
 import { AnimatePresence, motion } from "motion/react";
 import { Wifi, WifiOff } from "lucide-react";
 import { ChatInput } from "@/components/ChatInput";
@@ -22,6 +15,7 @@ import { api } from "@/lib/api";
 import type { Language } from "@/lib/i18n";
 import { getTranslation, translateError } from "@/lib/i18n";
 import { getPresenceText } from "@/lib/presence";
+import { applyReactionUpdate, type ReactionUpdate } from "@/lib/reactions";
 import { playUiSound } from "@/lib/sounds";
 import {
   clearStoredUser,
@@ -225,8 +219,8 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     });
     chatSocket.on(
       "reaction:update",
-      (payload: { action: "added" | "removed"; reaction: MessageReactionDTO }) => {
-        setMessages((current) => applyReactionChange(current, payload.action, payload.reaction));
+      (payload: ReactionUpdate) => {
+        setMessages((current) => applyReactionUpdate(current, payload));
       }
     );
     chatSocket.on("typing", (payload: TypingDTO) => {
@@ -556,7 +550,14 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   async function toggleReaction(message: MessageDTO, emoji: string) {
     try {
       const result = await api.toggleReaction(message.id, user.id, emoji);
-      setMessages((current) => applyReactionChange(current, result.action, result.reaction));
+      setMessages((current) =>
+        applyReactionUpdate(
+          current,
+          result.action === "added"
+            ? { action: "added", reaction: result.reaction }
+            : { action: "removed", reactionId: result.reaction.id }
+        )
+      );
     } catch (caught) {
       setError(translateError(caught, t));
     }
@@ -795,30 +796,4 @@ function getNotificationBody(message: MessageDTO, t: ReturnType<typeof getTransl
   }
 
   return t.chat.originalMessage;
-}
-
-function applyReactionChange(
-  messages: MessageDTO[],
-  action: "added" | "removed",
-  reaction: MessageReactionDTO
-) {
-  return messages.map((message) => {
-    if (message.id !== reaction.messageId) return message;
-
-    if (action === "removed") {
-      return {
-        ...message,
-        reactions: message.reactions.filter((item) => item.id !== reaction.id)
-      };
-    }
-
-    if (message.reactions.some((item) => item.id === reaction.id)) {
-      return message;
-    }
-
-    return {
-      ...message,
-      reactions: [...message.reactions, reaction]
-    };
-  });
 }
