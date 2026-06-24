@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { MessageDTO } from "@minimalchat/shared";
-import { Pin } from "lucide-react";
 import { motion } from "motion/react";
 import { MessageBubble } from "@/components/MessageBubble";
+import { PinnedMessagesPanel } from "@/components/PinnedMessagesPanel";
 import type { Translation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +18,8 @@ interface MessageListProps {
   searchQuery?: string;
   activeSearchMessageId?: string | null;
   t: Translation;
-  pinnedMessage: MessageDTO | null;
+  pinnedMessages: MessageDTO[];
+  pinnedIndex: number;
   onEditMessage: (message: MessageDTO, text: string) => Promise<void>;
   onDeleteMessage: (message: MessageDTO, mode: "me" | "all") => Promise<void>;
   onPinMessage: (message: MessageDTO) => Promise<void>;
@@ -26,7 +27,7 @@ interface MessageListProps {
   onForwardMessage: (message: MessageDTO) => void;
   onReplyMessage: (message: MessageDTO) => void;
   onSelectionChange: (messageIds: string[]) => void;
-  onPinnedConsumed: () => void;
+  onPinnedIndexChange: (index: number) => void;
   onOpenImage: (image: { url: string; name: string }) => void;
 }
 
@@ -42,7 +43,8 @@ export function MessageList({
   searchQuery = "",
   activeSearchMessageId = null,
   t,
-  pinnedMessage,
+  pinnedMessages,
+  pinnedIndex,
   onEditMessage,
   onDeleteMessage,
   onPinMessage,
@@ -50,7 +52,7 @@ export function MessageList({
   onForwardMessage,
   onReplyMessage,
   onSelectionChange,
-  onPinnedConsumed,
+  onPinnedIndexChange,
   onOpenImage
 }: MessageListProps) {
   const endRef = useRef<HTMLDivElement>(null);
@@ -250,26 +252,13 @@ export function MessageList({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {pinnedMessage ? (
-        <button
-          type="button"
-          className="mx-7 mt-4 flex items-center gap-3 rounded-2xl border border-accent/30 bg-accent/10 px-4 py-3 text-left text-sm text-primaryText transition hover:bg-accent/14"
-          onClick={() => {
-            scrollToMessage(pinnedMessage.id);
-            onPinnedConsumed();
-          }}
-        >
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/18 text-accent">
-            <Pin size={17} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-secondaryText">{t.chat.pinned}</p>
-            <p className="mt-0.5 truncate text-sm">
-              {pinnedMessage.text || pinnedMessage.attachmentName || t.chat.originalMessage}
-            </p>
-          </div>
-        </button>
-      ) : null}
+      <PinnedMessagesPanel
+        messages={pinnedMessages}
+        activeIndex={pinnedIndex}
+        t={t}
+        onActiveIndexChange={onPinnedIndexChange}
+        onOpenMessage={scrollToMessage}
+      />
       <div ref={scrollAreaRef} className="min-h-0 flex-1 overflow-y-auto px-7 py-5">
       {messages.length === 0 ? (
         <motion.div

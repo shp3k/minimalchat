@@ -5,6 +5,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import type { Translation } from "@/lib/i18n";
 import { getPresenceText } from "@/lib/presence";
+import type { ChatDrafts } from "@/lib/storage";
 import { cn, formatMessageTime } from "@/lib/utils";
 
 interface UserListProps {
@@ -13,6 +14,7 @@ interface UserListProps {
   loading: boolean;
   query: string;
   t: Translation;
+  drafts: ChatDrafts;
   emptyMode: "conversations" | "hint" | "search";
   onQueryChange: (value: string) => void;
   onSelect: (user: UserListItemDTO) => void;
@@ -24,7 +26,7 @@ function preview(message: MessageDTO | null | undefined, t: Translation) {
   return message.text.length > 46 ? `${message.text.slice(0, 46)}...` : message.text;
 }
 
-export function UserList({ users, selectedUserId, loading, query, t, emptyMode, onQueryChange, onSelect }: UserListProps) {
+export function UserList({ users, selectedUserId, loading, query, t, drafts, emptyMode, onQueryChange, onSelect }: UserListProps) {
   const emptyText =
     emptyMode === "hint" ? t.chat.searchHint : emptyMode === "search" ? t.chat.noSearchResults : t.chat.noUsers;
 
@@ -60,7 +62,7 @@ export function UserList({ users, selectedUserId, loading, query, t, emptyMode, 
         ) : (
           <div className="space-y-2">
             {users.map((user) => (
-              <UserCard key={user.id} user={user} selected={selectedUserId === user.id} t={t} onSelect={onSelect} />
+              <UserCard key={user.id} user={user} selected={selectedUserId === user.id} t={t} draft={drafts[user.id]} onSelect={onSelect} />
             ))}
           </div>
         )}
@@ -73,16 +75,20 @@ function UserCard({
   user,
   selected,
   t,
+  draft,
   onSelect
 }: {
   user: UserListItemDTO;
   selected: boolean;
   t: Translation;
+  draft?: ChatDrafts[string];
   onSelect: (user: UserListItemDTO) => void;
 }) {
   const hasUnread = !selected && user.unreadCount > 0;
   const displayName = user.isSavedMessages ? t.chat.savedMessages : user.username;
-  const fallbackPreview = user.lastMessage
+  const fallbackPreview = draft?.text.trim()
+    ? draft.text.trim()
+    : user.lastMessage
     ? preview(user.lastMessage, t)
     : user.isSavedMessages
       ? t.chat.savedMessagesHint
@@ -114,14 +120,15 @@ function UserCard({
           <p className={cn("truncate text-sm font-semibold", hasUnread ? "text-white" : "text-primaryText")}>
             {displayName}
           </p>
-          {user.lastMessage ? (
+          {draft || user.lastMessage ? (
             <span className={cn("shrink-0 text-[11px]", hasUnread ? "font-semibold text-accent" : "text-secondaryText")}>
-              {formatMessageTime(user.lastMessage.sentAt)}
+              {formatMessageTime(draft?.updatedAt ?? user.lastMessage?.sentAt ?? "")}
             </span>
           ) : null}
         </div>
         <div className="mt-1 flex items-center gap-2">
           <p className={cn("min-w-0 flex-1 truncate text-xs", hasUnread ? "font-semibold text-primaryText" : "text-secondaryText")}>
+            {draft?.text.trim() ? <span className="mr-1 font-semibold text-red-300">{t.chat.draft}:</span> : null}
             {fallbackPreview}
           </p>
           {hasUnread ? (

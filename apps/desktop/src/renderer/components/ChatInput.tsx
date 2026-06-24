@@ -21,8 +21,10 @@ interface ChatInputProps {
   t: Translation;
   replyTo?: MessageDTO | null;
   replyToAuthorName?: string;
+  initialText?: string;
   onCancelReply?: () => void;
-  onSend: (text: string, file?: File | null) => Promise<void> | void;
+  onDraftChange?: (text: string) => void;
+  onSend: (text: string, file?: File | null) => Promise<boolean | void> | boolean | void;
   onTypingChange?: (isTyping: boolean) => void;
 }
 
@@ -30,11 +32,21 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const TYPING_IDLE_MS = 2200;
 const TYPING_HEARTBEAT_MS = 1000;
 
-export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelReply, onSend, onTypingChange }: ChatInputProps) {
+export function ChatInput({
+  disabled,
+  t,
+  replyTo,
+  replyToAuthorName,
+  initialText = "",
+  onCancelReply,
+  onDraftChange,
+  onSend,
+  onTypingChange
+}: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputBoxRef = useRef<HTMLDivElement>(null);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText);
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
   const [pasteMenu, setPasteMenu] = useState<{ x: number; y: number; canPaste: boolean } | null>(null);
@@ -84,8 +96,11 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
 
     setSending(true);
     try {
-      await onSend(value, file);
+      const sent = await onSend(value, file);
+      if (sent === false) return;
+
       setText("");
+      onDraftChange?.("");
       setFile(null);
       setFileError("");
       stopTyping();
@@ -121,6 +136,7 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
   function handleTextChange(event: ChangeEvent<HTMLTextAreaElement>) {
     const value = event.target.value;
     setText(value);
+    onDraftChange?.(value);
 
     if (disabled) return;
 
@@ -208,6 +224,7 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
     const nextCursor = Math.min(start + value.length, nextText.length);
 
     setText(nextText);
+    onDraftChange?.(nextText);
     setPasteMenu(null);
     if (nextText.trim()) {
       startTyping();
@@ -288,7 +305,9 @@ export function ChatInput({ disabled, t, replyTo, replyToAuthorName, onCancelRep
 
     setSending(true);
     try {
-      await onSend("", voiceFile);
+      const sent = await onSend("", voiceFile);
+      if (sent === false) return;
+
       onCancelReply?.();
     } finally {
       setSending(false);

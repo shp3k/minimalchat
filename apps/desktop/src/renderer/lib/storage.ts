@@ -4,6 +4,14 @@ import type { Language } from "@/lib/i18n";
 const USER_KEY = "minimalchat:user";
 const LANGUAGE_KEY = "minimalchat:language";
 const SOUND_SETTINGS_KEY = "minimalchat:sound-settings";
+const DRAFTS_KEY = "minimalchat:drafts";
+
+export interface ChatDraft {
+  text: string;
+  updatedAt: string;
+}
+
+export type ChatDrafts = Record<string, ChatDraft>;
 
 export interface SoundSettings {
   notifications: boolean;
@@ -63,4 +71,20 @@ export function getStoredSoundSettings(): SoundSettings {
 
 export function storeSoundSettings(settings: SoundSettings) {
   localStorage.setItem(SOUND_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+export function getStoredDrafts(userId: string): ChatDrafts {
+  const value = localStorage.getItem(`${DRAFTS_KEY}:${userId}`);
+  if (!value) return {};
+
+  try {
+    return JSON.parse(value) as ChatDrafts;
+  } catch {
+    localStorage.removeItem(`${DRAFTS_KEY}:${userId}`);
+    return {};
+  }
+}
+
+export function storeDrafts(userId: string, drafts: ChatDrafts) {
+  localStorage.setItem(`${DRAFTS_KEY}:${userId}`, JSON.stringify(drafts));
 }

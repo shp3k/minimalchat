@@ -24,8 +24,11 @@ import { applyReactionUpdate, type ReactionUpdate } from "@/lib/reactions";
 import { playUiSound } from "@/lib/sounds";
 import {
   clearStoredUser,
+  getStoredDrafts,
   getStoredSoundSettings,
+  storeDrafts,
   storeSoundSettings,
+  type ChatDrafts,
   type SoundSettings
 } from "@/lib/storage";
 import { createChatSocket, sendSocketMessage, type ChatSocket } from "@/lib/socket";
@@ -57,6 +60,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [selectionBusy, setSelectionBusy] = useState(false);
   const [clearHistoryBusy, setClearHistoryBusy] = useState(false);
+  const [drafts, setDrafts] = useState<ChatDrafts>(() => getStoredDrafts(user.id));
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [chatSearchQuery, setChatSearchQuery] = useState("");
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
@@ -94,6 +98,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     return messages.filter((message) => message.text.toLocaleLowerCase().includes(value));
   }, [chatSearchQuery, messages]);
   const activeSearchMessageId = searchResults[activeSearchIndex]?.id ?? null;
+  const displayedUsers = useMemo(() => sortConversationUsersWithDrafts(users, drafts), [drafts, users]);
   const totalUnreadCount = useMemo(
     () => users.reduce((sum, item) => sum + Math.max(0, item.unreadCount), 0),
     [users]
@@ -115,6 +120,10 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     soundSettingsRef.current = soundSettings;
     storeSoundSettings(soundSettings);
   }, [soundSettings]);
+
+  useEffect(() => {
+    storeDrafts(user.id, drafts);
+  }, [drafts, user.id]);
 
   useEffect(() => {
     void window.minimalChatApp?.setUnreadCount?.(totalUnreadCount);
@@ -542,7 +551,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   }
 
   async function sendMessage(text: string, file?: File | null) {
-    if (!selectedUser) return;
+    if (!selectedUser) return false;
 
     if (file) {
       try {
@@ -560,10 +569,11 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
         if (soundSettings.sentMessages) {
           void playUiSound("sent");
         }
+        return true;
       } catch (caught) {
         setError(translateError(caught, t));
+        return false;
       }
-      return;
     }
 
     const response = await sendSocketMessage(socket, {
@@ -575,12 +585,13 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
     if (!response.ok) {
       setError(response.code === "SERVER_UNAVAILABLE" ? t.errors.messageNotSent : translateError(response, t));
-      return;
+      return false;
     }
 
     if (soundSettings.sentMessages) {
       void playUiSound("sent");
     }
+    return true;
   }
 
   const sendTypingState = useCallback(
@@ -916,7 +927,6 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     });
   }, [pinnedMessages.length]);
 
-  const pinnedMessage = pinnedMessages[pinnedCursor] ?? null;
   const selectedUserTyping = Boolean(selectedUser && !selectedUser.isSavedMessages && typingUserIds[selectedUser.id]);
   const selectedUserPresenceText = selectedUser
     ? selectedUser.isSavedMessages
@@ -925,8 +935,25 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     : "";
   const selectedUserName = selectedUser?.isSavedMessages ? t.chat.savedMessages : selectedUser?.username ?? "";
 
-  function showNextPinnedMessage() {
-    setPinnedCursor((current) => (pinnedMessages.length ? (current + 1) % pinnedMessages.length : 0));
+  function updateDraft(text: string) {
+    if (!selectedUser) return;
+
+    setDrafts((current) => {
+      const value = text.slice(0, 1000);
+      if (!value) {
+        const next = { ...current };
+        delete next[selectedUser.id];
+        return next;
+      }
+
+      return {
+        ...current,
+        [selectedUser.id]: {
+          text: value,
+          updatedAt: new Date().toISOString()
+        }
+      };
+    });
   }
 
   function closeChatSearch() {
@@ -949,11 +976,12 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     <main className="flex min-h-0 flex-1 overflow-hidden bg-background">
       <Sidebar user={user} unreadCount={totalUnreadCount} onProfileOpen={() => setProfileOpen(true)} />
       <UserList
-        users={users}
+        users={displayedUsers}
         selectedUserId={selectedUser?.id}
         loading={usersLoading}
         query={query}
         t={t}
+        drafts={drafts}
         emptyMode={emptyMode}
         onQueryChange={setQuery}
         onSelect={selectUser}
@@ -1050,7 +1078,8 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                 searchQuery={chatSearchQuery}
                 activeSearchMessageId={activeSearchMessageId}
                 t={t}
-                pinnedMessage={pinnedMessage}
+                pinnedMessages={pinnedMessages}
+                pinnedIndex={pinnedCursor}
                 onEditMessage={editMessage}
                 onDeleteMessage={deleteMessage}
                 onPinMessage={pinMessage}
@@ -1058,7 +1087,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                 onForwardMessage={openForwardMessage}
                 onReplyMessage={setReplyTarget}
                 onSelectionChange={changeMessageSelection}
-                onPinnedConsumed={showNextPinnedMessage}
+                onPinnedIndexChange={setPinnedCursor}
                 onOpenImage={setImagePreview}
               />
               {selectedMessageIds.length ? (
@@ -1076,11 +1105,14 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                 />
               ) : (
                 <ChatInput
+                  key={selectedUser.id}
                   disabled={!connected || messagesLoading}
                   t={t}
+                  initialText={drafts[selectedUser.id]?.text ?? ""}
                   replyTo={replyTarget}
                   replyToAuthorName={replyTarget ? getMessageAuthorName(replyTarget, user, selectedUser) : ""}
                   onCancelReply={() => setReplyTarget(null)}
+                  onDraftChange={updateDraft}
                   onSend={sendMessage}
                   onTypingChange={sendTypingState}
                 />
@@ -1230,6 +1262,14 @@ function sortConversationUsers(users: UserListItemDTO[]) {
     const firstTime = first.lastMessage ? new Date(first.lastMessage.sentAt).getTime() : 0;
     const secondTime = second.lastMessage ? new Date(second.lastMessage.sentAt).getTime() : 0;
     return secondTime - firstTime;
+  });
+}
+
+function sortConversationUsersWithDrafts(users: UserListItemDTO[], drafts: ChatDrafts) {
+  return [...users].sort((first, second) => {
+    const firstTime = drafts[first.id]?.updatedAt ?? first.lastMessage?.sentAt ?? "";
+    const secondTime = drafts[second.id]?.updatedAt ?? second.lastMessage?.sentAt ?? "";
+    return new Date(secondTime || 0).getTime() - new Date(firstTime || 0).getTime();
   });
 }
 
