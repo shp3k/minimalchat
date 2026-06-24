@@ -608,8 +608,13 @@ export const api = {
         throw new ApiRequestError(existing.error.message, existing.error.code);
       }
 
-      const data =
-        existing.data.senderId === currentUserId ? { hiddenForSender: true } : { hiddenForReceiver: true };
+      const isSavedMessage =
+        existing.data.senderId === currentUserId && existing.data.receiverId === currentUserId;
+      const data = isSavedMessage
+        ? { hiddenForSender: true, hiddenForReceiver: true }
+        : existing.data.senderId === currentUserId
+          ? { hiddenForSender: true }
+          : { hiddenForReceiver: true };
       const result = await supabase.from("Message").update(data).eq("id", messageId);
 
       if (result.error) {

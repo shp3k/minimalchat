@@ -1,5 +1,5 @@
 import type { MessageDTO, UserListItemDTO } from "@minimalchat/shared";
-import { Search } from "lucide-react";
+import { Bookmark, Search } from "lucide-react";
 import { motion } from "motion/react";
 import { Avatar } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
@@ -81,7 +81,12 @@ function UserCard({
   onSelect: (user: UserListItemDTO) => void;
 }) {
   const hasUnread = !selected && user.unreadCount > 0;
-  const fallbackPreview = user.lastMessage ? preview(user.lastMessage, t) : getPresenceText(user, t);
+  const displayName = user.isSavedMessages ? t.chat.savedMessages : user.username;
+  const fallbackPreview = user.lastMessage
+    ? preview(user.lastMessage, t)
+    : user.isSavedMessages
+      ? t.chat.savedMessagesHint
+      : getPresenceText(user, t);
 
   return (
     <motion.button
@@ -97,11 +102,17 @@ function UserCard({
             : "border-transparent bg-transparent hover:border-borderSoft hover:bg-white/[0.04]"
       )}
     >
-      <Avatar username={user.username} avatarUrl={user.avatarUrl} online={user.online} />
+      {user.isSavedMessages ? (
+        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-accent text-white shadow-accent">
+          <Bookmark size={20} fill="currentColor" />
+        </div>
+      ) : (
+        <Avatar username={user.username} avatarUrl={user.avatarUrl} online={user.online} />
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-3">
           <p className={cn("truncate text-sm font-semibold", hasUnread ? "text-white" : "text-primaryText")}>
-            {user.username}
+            {displayName}
           </p>
           {user.lastMessage ? (
             <span className={cn("shrink-0 text-[11px]", hasUnread ? "font-semibold text-accent" : "text-secondaryText")}>

@@ -13,6 +13,7 @@ export interface UserDTO {
 export interface UserListItemDTO extends UserDTO {
   lastMessage?: MessageDTO | null;
   unreadCount: number;
+  isSavedMessages?: boolean;
 }
 
 export interface MessageDTO {

@@ -1,5 +1,5 @@
 import type { MessageDTO, UserListItemDTO } from "@minimalchat/shared";
-import { Forward, Search, X } from "lucide-react";
+import { Bookmark, Forward, Search, X } from "lucide-react";
 import { motion } from "motion/react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -84,11 +84,23 @@ export function ForwardMessageModal({
                   onClick={() => onSelect(user)}
                   className="flex w-full items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 text-left transition hover:border-borderSoft hover:bg-white/[0.05] disabled:opacity-50"
                 >
-                  <Avatar username={user.username} avatarUrl={user.avatarUrl} online={user.online} className="h-10 w-10" />
+                  {user.isSavedMessages ? (
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent text-white shadow-accent">
+                      <Bookmark size={17} fill="currentColor" />
+                    </div>
+                  ) : (
+                    <Avatar username={user.username} avatarUrl={user.avatarUrl} online={user.online} className="h-10 w-10" />
+                  )}
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-primaryText">{user.username}</p>
+                    <p className="truncate text-sm font-semibold text-primaryText">
+                      {user.isSavedMessages ? t.chat.savedMessages : user.username}
+                    </p>
                     <p className="mt-0.5 truncate text-xs text-secondaryText">
-                      {user.handle ? `@${user.handle}` : user.email}
+                      {user.isSavedMessages
+                        ? t.chat.savedMessagesHint
+                        : user.handle
+                          ? `@${user.handle}`
+                          : user.email}
                     </p>
                   </div>
                   {sendingUserId === user.id ? (

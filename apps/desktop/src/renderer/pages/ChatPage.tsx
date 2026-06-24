@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MessageDTO, OnlineUsersDTO, TypingDTO, UserDTO, UserListItemDTO } from "@minimalchat/shared";
+import { Bookmark } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { ChatInput } from "@/components/ChatInput";
 import { EmptyChatState } from "@/components/EmptyChatState";
@@ -184,7 +185,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
       try {
         const result = await api.users(user.id, value || undefined);
         if (!cancelled) {
-          setForwardUsers(result.users);
+          setForwardUsers(value ? result.users : withSavedMessages(result.users, user));
         }
       } catch (caught) {
         if (!cancelled) {
@@ -237,7 +238,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
       if (activeUser && belongsToSelected && message.senderId === activeUser.id && message.receiverId === user.id) {
         void markConversationRead(activeUser.id);
       }
-      if (message.receiverId === user.id) {
+      if (message.receiverId === user.id && message.senderId !== user.id) {
         void showIncomingMessageNotification(message, Boolean(!belongsToSelected));
       }
       setUsers((current) => {
@@ -345,9 +346,10 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     setError("");
     try {
       const result = await api.users(user.id);
-      setUsers(result.users);
+      const nextUsers = withSavedMessages(result.users, user);
+      setUsers(nextUsers);
       if (selectedUser) {
-        const freshSelected = result.users.find((item) => item.id === selectedUser.id);
+        const freshSelected = nextUsers.find((item) => item.id === selectedUser.id);
         setSelectedUser(freshSelected ?? null);
       }
     } catch (caught) {
@@ -431,8 +433,9 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
     try {
       const result = await api.users(user.id);
-      setUsers(result.users);
-      const freshUser = result.users.find((item) => item.id === senderId);
+      const nextUsers = withSavedMessages(result.users, user);
+      setUsers(nextUsers);
+      const freshUser = nextUsers.find((item) => item.id === senderId);
 
       if (freshUser) {
         await selectUser(freshUser);
@@ -506,7 +509,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
   const sendTypingState = useCallback(
     (isTyping: boolean) => {
-      if (!selectedUser) return;
+      if (!selectedUser || selectedUser.isSavedMessages) return;
 
       socket?.emit("typing", {
         senderId: user.id,
@@ -692,8 +695,13 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   }, [pinnedMessages.length]);
 
   const pinnedMessage = pinnedMessages[pinnedCursor] ?? null;
-  const selectedUserTyping = Boolean(selectedUser && typingUserIds[selectedUser.id]);
-  const selectedUserPresenceText = selectedUser ? getPresenceText(selectedUser, t) : "";
+  const selectedUserTyping = Boolean(selectedUser && !selectedUser.isSavedMessages && typingUserIds[selectedUser.id]);
+  const selectedUserPresenceText = selectedUser
+    ? selectedUser.isSavedMessages
+      ? t.chat.savedMessagesHint
+      : getPresenceText(selectedUser, t)
+    : "";
+  const selectedUserName = selectedUser?.isSavedMessages ? t.chat.savedMessages : selectedUser?.username ?? "";
 
   function showNextPinnedMessage() {
     setPinnedCursor((current) => (pinnedMessages.length ? (current + 1) % pinnedMessages.length : 0));
@@ -734,9 +742,15 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
             >
               <header className="flex h-[82px] shrink-0 items-center border-b border-borderSoft bg-background/80 px-7">
                 <div className="flex items-center gap-4">
-                  <Avatar username={selectedUser.username} avatarUrl={selectedUser.avatarUrl} online={selectedUser.online} className="h-12 w-12 rounded-full" />
+                  {selectedUser.isSavedMessages ? (
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-accent text-white shadow-accent">
+                      <Bookmark size={20} fill="currentColor" />
+                    </div>
+                  ) : (
+                    <Avatar username={selectedUser.username} avatarUrl={selectedUser.avatarUrl} online={selectedUser.online} className="h-12 w-12 rounded-full" />
+                  )}
                   <div>
-                    <h2 className="text-base font-semibold text-primaryText">{selectedUser.username}</h2>
+                    <h2 className="text-base font-semibold text-primaryText">{selectedUserName}</h2>
                     <AnimatePresence mode="wait" initial={false}>
                       {selectedUserTyping ? (
                         <motion.p
@@ -768,9 +782,10 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
               <MessageList
                 currentUserId={user.id}
                 currentUserName={user.username}
-                otherUserName={selectedUser.username}
+                otherUserName={selectedUserName}
                 messages={messages}
                 loading={messagesLoading}
+                emptyText={selectedUser.isSavedMessages ? t.chat.savedMessagesEmpty : undefined}
                 t={t}
                 pinnedMessage={pinnedMessage}
                 onEditMessage={editMessage}
@@ -870,11 +885,13 @@ function bumpUserWithMessage(
   const unreadIncrement = message.senderId !== currentUserId && otherUserId !== selectedUserId ? 1 : 0;
   const next = [...users];
   const [matched] = next.splice(index, 1);
-  next.unshift({
+  const updated = {
     ...matched,
     lastMessage: message,
     unreadCount: otherUserId === selectedUserId ? 0 : matched.unreadCount + unreadIncrement
-  });
+  };
+  const savedIndex = next.findIndex((item) => item.isSavedMessages);
+  next.splice(matched.isSavedMessages || savedIndex === -1 ? 0 : savedIndex + 1, 0, updated);
   return next;
 }
 
@@ -908,12 +925,31 @@ function upsertUserWithMessage(
   const existing = users.find((item) => item.id === targetUser.id);
   const rest = users.filter((item) => item.id !== targetUser.id);
 
-  return [
-    {
-      ...(existing ?? targetUser),
-      lastMessage: message,
-      unreadCount: existing?.unreadCount ?? targetUser.unreadCount ?? 0
-    },
-    ...rest
-  ];
+  const updated = {
+    ...(existing ?? targetUser),
+    lastMessage: message,
+    unreadCount: existing?.unreadCount ?? targetUser.unreadCount ?? 0
+  };
+
+  if (updated.isSavedMessages) {
+    return [updated, ...rest];
+  }
+
+  const saved = rest.find((item) => item.isSavedMessages);
+  return saved
+    ? [saved, updated, ...rest.filter((item) => item.id !== saved.id)]
+    : [updated, ...rest];
+}
+
+function withSavedMessages(users: UserListItemDTO[], currentUser: UserDTO) {
+  const existing = users.find((item) => item.id === currentUser.id);
+  const savedMessages: UserListItemDTO = {
+    ...currentUser,
+    online: false,
+    lastMessage: existing?.lastMessage ?? null,
+    unreadCount: 0,
+    isSavedMessages: true
+  };
+
+  return [savedMessages, ...users.filter((item) => item.id !== currentUser.id)];
 }

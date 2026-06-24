@@ -11,6 +11,7 @@ interface MessageListProps {
   otherUserName: string;
   messages: MessageDTO[];
   loading: boolean;
+  emptyText?: string;
   t: Translation;
   pinnedMessage: MessageDTO | null;
   onEditMessage: (message: MessageDTO, text: string) => Promise<void>;
@@ -29,6 +30,7 @@ export function MessageList({
   otherUserName,
   messages,
   loading,
+  emptyText,
   t,
   pinnedMessage,
   onEditMessage,
@@ -124,7 +126,7 @@ export function MessageList({
           animate={{ opacity: 1, y: 0 }}
           className="grid h-full place-items-center text-center text-sm leading-6 text-secondaryText"
         >
-          {t.chat.startConversation}
+          {emptyText ?? t.chat.startConversation}
         </motion.div>
       ) : (
         <div className="flex min-h-full flex-col justify-end gap-2.5">

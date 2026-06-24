@@ -103,10 +103,6 @@ router.post("/send", upload.single("file"), async (req, res, next) => {
     const file = req.file;
     const text = data.text.trim();
 
-    if (data.senderId === data.receiverId) {
-      throw new HttpError(400, "Cannot send a direct message to yourself", "INVALID_RECEIVER");
-    }
-
     if (!text && !file) {
       throw new HttpError(400, "Message cannot be empty", "EMPTY_MESSAGE");
     }
@@ -214,10 +210,6 @@ router.post("/:messageId/forward", async (req, res, next) => {
       throw new HttpError(403, "You can forward only chat messages", "FORBIDDEN");
     }
 
-    if (data.senderId === data.receiverId) {
-      throw new HttpError(400, "Cannot forward a message to yourself", "INVALID_RECEIVER");
-    }
-
     const message = await prisma.message.create({
       data: {
         senderId: data.senderId,
@@ -304,7 +296,12 @@ router.delete("/:messageId", async (req, res, next) => {
     if (data.mode === "me") {
       await prisma.message.update({
         where: { id: message.id },
-        data: message.senderId === data.currentUserId ? { hiddenForSender: true } : { hiddenForReceiver: true }
+        data:
+          message.senderId === data.currentUserId && message.receiverId === data.currentUserId
+            ? { hiddenForSender: true, hiddenForReceiver: true }
+            : message.senderId === data.currentUserId
+              ? { hiddenForSender: true }
+              : { hiddenForReceiver: true }
       });
       res.json({ ok: true, id: message.id, mode: "me" });
       return;
