@@ -61,7 +61,7 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const attachmentUrl = getAttachmentUrl(message.attachmentUrl);
   const hasAttachment = Boolean(attachmentUrl);
-  const isVoice = Boolean(message.attachmentMime?.startsWith("audio/") && isVoiceMessage(message.attachmentName ?? ""));
+  const copyMode = getCopyMode(message, attachmentUrl);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.text);
   const [busy, setBusy] = useState(false);
@@ -113,7 +113,7 @@ export function MessageBubble({
               mine={mine}
               placement={popupPlacement}
               pinned={message.isPinned}
-              canCopy={!isVoice && Boolean(message.text || attachmentUrl)}
+              copyMode={copyMode}
               currentUserId={currentUserId}
               reactions={message.reactions}
               onReaction={(emoji) => {
@@ -130,7 +130,7 @@ export function MessageBubble({
                 onPopupChange(null);
               }}
               onCopy={() => {
-                void copyToClipboard(getCopyPayload(message, attachmentUrl));
+                void copyMessageContent(message, attachmentUrl, copyMode);
                 onPopupChange(null);
               }}
               onPin={async () => {
@@ -339,7 +339,7 @@ interface MessageMenuProps {
   mine: boolean;
   placement: "top" | "bottom";
   pinned: boolean;
-  canCopy: boolean;
+  copyMode: CopyMode;
   currentUserId: string;
   reactions: MessageDTO["reactions"];
   onReaction: (emoji: string) => void;
@@ -355,7 +355,7 @@ function MessageMenu({
   mine,
   placement,
   pinned,
-  canCopy,
+  copyMode,
   currentUserId,
   reactions,
   onReaction,
@@ -390,7 +390,7 @@ function MessageMenu({
       </div>
       <MenuButton icon={<Reply size={15} />} label={t.chat.replyMessage} onClick={onReply} />
       {mine ? <MenuButton icon={<Pencil size={15} />} label={t.chat.editMessage} onClick={onEdit} /> : null}
-      <MenuButton icon={<Copy size={15} />} label={t.chat.copyMessage} onClick={onCopy} disabled={!canCopy} />
+      {copyMode ? <MenuButton icon={<Copy size={15} />} label={t.chat.copyMessage} onClick={onCopy} /> : null}
       <MenuButton icon={<Pin size={15} />} label={pinned ? t.chat.unpinMessage : t.chat.pinMessage} onClick={onPin} />
       <MenuButton danger icon={<Trash2 size={15} />} label={t.chat.deleteMessage} onClick={onDelete} />
     </motion.div>
@@ -753,15 +753,39 @@ function getAttachmentUrl(value: string | null) {
   return `${apiUrl}${value}`;
 }
 
-function getCopyPayload(message: MessageDTO, attachmentUrl: string | null) {
-  return [message.text, attachmentUrl].filter(Boolean).join("\n");
+type CopyMode = "text" | "image" | null;
+
+function getCopyMode(message: MessageDTO, attachmentUrl: string | null): CopyMode {
+  if (attachmentUrl) {
+    return isImageAttachment(message, attachmentUrl) ? "image" : null;
+  }
+
+  return message.text.trim() ? "text" : null;
+}
+
+function isImageAttachment(message: MessageDTO, attachmentUrl: string) {
+  if (message.attachmentMime?.startsWith("image/")) return true;
+
+  const name = message.attachmentName ?? attachmentUrl.split("?")[0];
+  return /\.(png|jpe?g|webp|gif|bmp)$/i.test(name);
+}
+
+async function copyMessageContent(message: MessageDTO, attachmentUrl: string | null, mode: CopyMode) {
+  if (mode === "image" && attachmentUrl) {
+    await window.minimalChatClipboard?.writeImage(attachmentUrl);
+    return;
+  }
+
+  if (mode === "text") {
+    await copyTextToClipboard(message.text);
+  }
 }
 
 function getMessagePreview(message: MessageDTO, t: Translation) {
   return message.text.trim() || message.attachmentName || t.chat.originalMessage;
 }
 
-async function copyToClipboard(value: string) {
+async function copyTextToClipboard(value: string) {
   if (window.minimalChatClipboard) {
     await window.minimalChatClipboard.writeText(value);
     return;
@@ -770,11 +794,11 @@ async function copyToClipboard(value: string) {
   try {
     await navigator.clipboard.writeText(value);
   } catch {
-    copyToClipboardWithSelection(value);
+    copyTextToClipboardWithSelection(value);
   }
 }
 
-function copyToClipboardWithSelection(value: string) {
+function copyTextToClipboardWithSelection(value: string) {
   const textarea = document.createElement("textarea");
   textarea.value = value;
   textarea.style.position = "fixed";

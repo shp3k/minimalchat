@@ -1,8 +1,10 @@
 ﻿const { app, BrowserWindow, Notification, clipboard, ipcMain, nativeImage, session, shell } = require("electron");
 const { spawn } = require("node:child_process");
+const { net } = require("electron");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
+const { copyImageUrlToClipboard } = require("./imageClipboard.cjs");
 
 let autoUpdater = null;
 
@@ -318,6 +320,14 @@ ipcMain.handle("app:get-version", () => app.getVersion());
 ipcMain.handle("clipboard:read-text", () => clipboard.readText());
 ipcMain.handle("clipboard:write-text", (_event, value) => {
   clipboard.writeText(String(value ?? ""));
+});
+ipcMain.handle("clipboard:write-image", async (_event, url) => {
+  return copyImageUrlToClipboard(url, {
+    isSafeExternalUrl,
+    fetch: (imageUrl) => net.fetch(imageUrl),
+    createImage: (buffer) => nativeImage.createFromBuffer(buffer),
+    writeImage: (image) => clipboard.writeImage(image)
+  });
 });
 ipcMain.handle("notification:show-message", (_event, payload) => {
   if (!Notification.isSupported() || !shouldShowMessageNotification(Boolean(payload?.force))) {

@@ -24,6 +24,7 @@ declare global {
     minimalChatClipboard?: {
       readText: () => Promise<string>;
       writeText: (value: string) => Promise<void>;
+      writeImage: (url: string) => Promise<{ ok: boolean; code?: string }>;
     };
     minimalChatNotifications?: {
       showMessage: (payload: {
