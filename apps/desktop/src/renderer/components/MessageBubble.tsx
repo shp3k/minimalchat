@@ -3,6 +3,7 @@ import type { MessageDTO } from "@minimalchat/shared";
 import {
   Check,
   CheckCheck,
+  CheckSquare,
   Copy,
   Download,
   ExternalLink,
@@ -26,6 +27,7 @@ interface MessageBubbleProps {
   currentUserId: string;
   mine: boolean;
   savedMessages?: boolean;
+  selected?: boolean;
   t: Translation;
   highlighted?: boolean;
   popupType: "menu" | "delete" | "reactions" | null;
@@ -38,6 +40,7 @@ interface MessageBubbleProps {
   onToggleReaction: (message: MessageDTO, emoji: string) => Promise<void>;
   onForward: (message: MessageDTO) => void;
   onReply: (message: MessageDTO) => void;
+  onSelect: (message: MessageDTO) => void;
   onOpenReply: (messageId: string) => void;
   onOpenImage: (image: { url: string; name: string }) => void;
   onPopupChange: (type: "menu" | "delete" | "reactions" | null) => void;
@@ -48,6 +51,7 @@ export function MessageBubble({
   currentUserId,
   mine,
   savedMessages = false,
+  selected = false,
   t,
   highlighted,
   popupType,
@@ -60,6 +64,7 @@ export function MessageBubble({
   onToggleReaction,
   onForward,
   onReply,
+  onSelect,
   onOpenReply,
   onOpenImage,
   onPopupChange
@@ -107,6 +112,7 @@ export function MessageBubble({
             : "rounded-bl-md border-borderSoft bg-panel2 text-primaryText",
           hasAttachment ? "min-w-[280px]" : "min-w-0",
           highlighted ? "ring-2 ring-white/70 ring-offset-2 ring-offset-background" : "",
+          selected ? "ring-2 ring-accent ring-offset-2 ring-offset-background" : "",
           "cursor-context-menu"
         )}
       >
@@ -131,6 +137,10 @@ export function MessageBubble({
               }}
               onForward={() => {
                 onForward(message);
+                onPopupChange(null);
+              }}
+              onSelect={() => {
+                onSelect(message);
                 onPopupChange(null);
               }}
               onEdit={() => {
@@ -365,6 +375,7 @@ interface MessageMenuProps {
   onReaction: (emoji: string) => void;
   onReply: () => void;
   onForward: () => void;
+  onSelect: () => void;
   onEdit: () => void;
   onCopy: () => void;
   onPin: () => void | Promise<void>;
@@ -382,6 +393,7 @@ function MessageMenu({
   onReaction,
   onReply,
   onForward,
+  onSelect,
   onEdit,
   onCopy,
   onPin,
@@ -412,6 +424,7 @@ function MessageMenu({
       </div>
       <MenuButton icon={<Reply size={15} />} label={t.chat.replyMessage} onClick={onReply} />
       <MenuButton icon={<Forward size={15} />} label={t.chat.forwardMessage} onClick={onForward} />
+      <MenuButton icon={<CheckSquare size={15} />} label={t.chat.selectMessage} onClick={onSelect} />
       {mine ? <MenuButton icon={<Pencil size={15} />} label={t.chat.editMessage} onClick={onEdit} /> : null}
       {copyMode ? <MenuButton icon={<Copy size={15} />} label={t.chat.copyMessage} onClick={onCopy} /> : null}
       <MenuButton icon={<Pin size={15} />} label={pinned ? t.chat.unpinMessage : t.chat.pinMessage} onClick={onPin} />
@@ -786,16 +799,16 @@ function AudioAttachment({ url, name, mine }: AudioAttachmentProps) {
   );
 }
 
-function getAttachmentUrl(value: string | null) {
+export function getAttachmentUrl(value: string | null) {
   if (!value) return null;
   if (/^https?:\/\//i.test(value)) return value;
   const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
   return `${apiUrl}${value}`;
 }
 
-type CopyMode = "text" | "image" | null;
+export type CopyMode = "text" | "image" | null;
 
-function getCopyMode(message: MessageDTO, attachmentUrl: string | null): CopyMode {
+export function getCopyMode(message: MessageDTO, attachmentUrl: string | null): CopyMode {
   if (attachmentUrl) {
     return isImageAttachment(message, attachmentUrl) ? "image" : null;
   }
@@ -810,7 +823,7 @@ function isImageAttachment(message: MessageDTO, attachmentUrl: string) {
   return /\.(png|jpe?g|webp|gif|bmp)$/i.test(name);
 }
 
-async function copyMessageContent(message: MessageDTO, attachmentUrl: string | null, mode: CopyMode) {
+export async function copyMessageContent(message: MessageDTO, attachmentUrl: string | null, mode: CopyMode) {
   if (mode === "image" && attachmentUrl) {
     await window.minimalChatClipboard?.writeImage(attachmentUrl);
     return;

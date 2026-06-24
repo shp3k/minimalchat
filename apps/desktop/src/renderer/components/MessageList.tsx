@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { MessageDTO } from "@minimalchat/shared";
 import { Pin } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { MessageBubble } from "@/components/MessageBubble";
 import type { Translation } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
 interface MessageListProps {
   currentUserId: string;
@@ -13,6 +14,7 @@ interface MessageListProps {
   loading: boolean;
   emptyText?: string;
   savedMessages?: boolean;
+  selectedMessageIds: string[];
   t: Translation;
   pinnedMessage: MessageDTO | null;
   onEditMessage: (message: MessageDTO, text: string) => Promise<void>;
@@ -21,6 +23,7 @@ interface MessageListProps {
   onToggleReaction: (message: MessageDTO, emoji: string) => Promise<void>;
   onForwardMessage: (message: MessageDTO) => void;
   onReplyMessage: (message: MessageDTO) => void;
+  onSelectionChange: (messageIds: string[]) => void;
   onPinnedConsumed: () => void;
   onOpenImage: (image: { url: string; name: string }) => void;
 }
@@ -33,6 +36,7 @@ export function MessageList({
   loading,
   emptyText,
   savedMessages = false,
+  selectedMessageIds,
   t,
   pinnedMessage,
   onEditMessage,
@@ -41,12 +45,14 @@ export function MessageList({
   onToggleReaction,
   onForwardMessage,
   onReplyMessage,
+  onSelectionChange,
   onPinnedConsumed,
   onOpenImage
 }: MessageListProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef(new Map<string, HTMLDivElement>());
+  const selectionAnchorRef = useRef<string | null>(null);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [activePopup, setActivePopup] = useState<{
     messageId: string;
@@ -64,6 +70,48 @@ export function MessageList({
     }
   }, [activePopup, messages]);
 
+  useEffect(() => {
+    const availableIds = new Set(messages.map((message) => message.id));
+    const nextIds = selectedMessageIds.filter((id) => availableIds.has(id));
+
+    if (nextIds.length !== selectedMessageIds.length) {
+      onSelectionChange(nextIds);
+    }
+  }, [messages, onSelectionChange, selectedMessageIds]);
+
+  function selectMessage(messageId: string, event?: MouseEvent<HTMLDivElement>) {
+    const current = new Set(selectedMessageIds);
+
+    if (event?.shiftKey && selectionAnchorRef.current) {
+      const anchorIndex = messages.findIndex((message) => message.id === selectionAnchorRef.current);
+      const currentIndex = messages.findIndex((message) => message.id === messageId);
+
+      if (anchorIndex !== -1 && currentIndex !== -1) {
+        const [start, end] = anchorIndex < currentIndex ? [anchorIndex, currentIndex] : [currentIndex, anchorIndex];
+        const range = messages.slice(start, end + 1).map((message) => message.id);
+        onSelectionChange(event.ctrlKey || event.metaKey ? Array.from(new Set([...selectedMessageIds, ...range])) : range);
+        return;
+      }
+    }
+
+    if (current.has(messageId)) {
+      current.delete(messageId);
+    } else {
+      current.add(messageId);
+    }
+
+    selectionAnchorRef.current = messageId;
+    onSelectionChange(Array.from(current));
+  }
+
+  function handleMessageClick(messageId: string, event: MouseEvent<HTMLDivElement>) {
+    const selectionMode = selectedMessageIds.length > 0;
+    if (!selectionMode && !event.ctrlKey && !event.metaKey && !event.shiftKey) return;
+
+    event.preventDefault();
+    selectMessage(messageId, event);
+  }
+
   function scrollToMessage(messageId: string) {
     const element = messageRefs.current.get(messageId);
     if (!element) return;
@@ -76,7 +124,7 @@ export function MessageList({
   function openPopup(messageId: string, type: "menu" | "delete" | "reactions") {
     const messageElement = messageRefs.current.get(messageId);
     const scrollArea = scrollAreaRef.current;
-    const estimatedPopupHeight = type === "delete" ? 176 : type === "reactions" ? 58 : 268;
+    const estimatedPopupHeight = type === "delete" ? 176 : type === "reactions" ? 58 : 310;
     const placement =
       messageElement && scrollArea
         ? scrollArea.getBoundingClientRect().bottom - messageElement.getBoundingClientRect().bottom < estimatedPopupHeight + 12
@@ -141,6 +189,7 @@ export function MessageList({
               return (
               <div
                 key={message.id}
+                onClick={(event) => handleMessageClick(message.id, event)}
                 ref={(element) => {
                   if (element) {
                     messageRefs.current.set(message.id, element);
@@ -148,12 +197,18 @@ export function MessageList({
                     messageRefs.current.delete(message.id);
                   }
                 }}
+                className={cn(
+                  "rounded-2xl px-2 py-0.5 transition-colors",
+                  selectedMessageIds.includes(message.id) && "bg-accent/10",
+                  selectedMessageIds.length > 0 && "cursor-pointer"
+                )}
               >
                 <MessageBubble
                   message={message}
                   currentUserId={currentUserId}
                   mine={message.senderId === currentUserId}
                   savedMessages={savedMessages}
+                  selected={selectedMessageIds.includes(message.id)}
                   highlighted={highlightedId === message.id}
                   popupType={activePopup?.messageId === message.id ? activePopup.type : null}
                   popupPlacement={activePopup?.messageId === message.id ? activePopup.placement : "top"}
@@ -166,6 +221,7 @@ export function MessageList({
                   onToggleReaction={onToggleReaction}
                   onForward={onForwardMessage}
                   onReply={onReplyMessage}
+                  onSelect={(selectedMessage) => selectMessage(selectedMessage.id)}
                   onOpenReply={scrollToMessage}
                   onOpenImage={onOpenImage}
                   onPopupChange={(type) => {

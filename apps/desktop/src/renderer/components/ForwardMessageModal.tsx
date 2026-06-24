@@ -8,6 +8,7 @@ import type { Translation } from "@/lib/i18n";
 
 interface ForwardMessageModalProps {
   message: MessageDTO;
+  messageCount?: number;
   users: UserListItemDTO[];
   query: string;
   loading: boolean;
@@ -20,6 +21,7 @@ interface ForwardMessageModalProps {
 
 export function ForwardMessageModal({
   message,
+  messageCount = 1,
   users,
   query,
   loading,
@@ -45,8 +47,12 @@ export function ForwardMessageModal({
               <Forward size={18} />
             </div>
             <div className="min-w-0">
-              <h2 className="text-lg font-semibold text-primaryText">{t.chat.forwardMessage}</h2>
-              <p className="mt-0.5 truncate text-xs text-secondaryText">{getForwardPreview(message, t)}</p>
+              <h2 className="text-lg font-semibold text-primaryText">
+                {t.chat.forwardMessage}{messageCount > 1 ? ` · ${messageCount}` : ""}
+              </h2>
+              <p className="mt-0.5 truncate text-xs text-secondaryText">
+                {messageCount > 1 ? `${t.chat.selectedMessages}: ${messageCount}` : getForwardPreview(message, t)}
+              </p>
             </div>
           </div>
           <Button type="button" variant="ghost" size="icon" aria-label={t.profile.close} onClick={onClose}>

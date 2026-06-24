@@ -6,7 +6,9 @@ import { ChatInput } from "@/components/ChatInput";
 import { EmptyChatState } from "@/components/EmptyChatState";
 import { ForwardMessageModal } from "@/components/ForwardMessageModal";
 import { ImageViewer } from "@/components/ImageViewer";
+import { MessageSelectionBar } from "@/components/MessageSelectionBar";
 import { MessageList } from "@/components/MessageList";
+import { copyMessageContent, getAttachmentUrl, getCopyMode } from "@/components/MessageBubble";
 import { ProfileModal } from "@/components/ProfileModal";
 import { SettingsModal } from "@/components/SettingsModal";
 import { Sidebar } from "@/components/Sidebar";
@@ -45,11 +47,13 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [imagePreview, setImagePreview] = useState<{ url: string; name: string } | null>(null);
   const [replyTarget, setReplyTarget] = useState<MessageDTO | null>(null);
-  const [forwardTarget, setForwardTarget] = useState<MessageDTO | null>(null);
+  const [forwardTargets, setForwardTargets] = useState<MessageDTO[]>([]);
   const [forwardUsers, setForwardUsers] = useState<UserListItemDTO[]>([]);
   const [forwardQuery, setForwardQuery] = useState("");
   const [forwardLoading, setForwardLoading] = useState(false);
   const [forwardingUserId, setForwardingUserId] = useState<string | null>(null);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
+  const [selectionBusy, setSelectionBusy] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [privacyLoading, setPrivacyLoading] = useState(false);
   const [soundSettings, setSoundSettings] = useState<SoundSettings>(() => getStoredSoundSettings());
@@ -64,6 +68,18 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const typingTimersRef = useRef<Record<string, number>>({});
   const soundSettingsRef = useRef(soundSettings);
   const t = getTranslation(language);
+  const forwardTarget = forwardTargets[0] ?? null;
+  const selectedMessages = useMemo(
+    () => messages.filter((message) => selectedMessageIds.includes(message.id)),
+    [messages, selectedMessageIds]
+  );
+  const canCopySelection = useMemo(() => {
+    if (selectedMessages.some((message) => message.text.trim())) return true;
+    if (selectedMessages.length !== 1) return false;
+    const message = selectedMessages[0];
+    const attachmentUrl = getAttachmentUrl(message.attachmentUrl);
+    return getCopyMode(message, attachmentUrl) === "image";
+  }, [selectedMessages]);
   const totalUnreadCount = useMemo(
     () => users.reduce((sum, item) => sum + Math.max(0, item.unreadCount), 0),
     [users]
@@ -110,6 +126,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   useEffect(() => {
     setPinnedCursor(0);
     setReplyTarget(null);
+    setSelectedMessageIds([]);
   }, [selectedUser?.id]);
 
   useEffect(() => {
@@ -130,7 +147,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
       if (forwardTarget) {
         event.preventDefault();
-        setForwardTarget(null);
+        setForwardTargets([]);
         setForwardQuery("");
         return;
       }
@@ -153,6 +170,12 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
         return;
       }
 
+      if (selectedMessageIds.length) {
+        event.preventDefault();
+        setSelectedMessageIds([]);
+        return;
+      }
+
       if (selectedUser) {
         event.preventDefault();
         selectedUserRef.current = null;
@@ -163,7 +186,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [forwardTarget, imagePreview, profileOpen, replyTarget, selectedUser, settingsOpen]);
+  }, [forwardTarget, imagePreview, profileOpen, replyTarget, selectedMessageIds.length, selectedUser, settingsOpen]);
 
   useEffect(() => {
     if (!forwardTarget) {
@@ -638,36 +661,145 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   }
 
   function openForwardMessage(message: MessageDTO) {
-    setForwardTarget(message);
+    setForwardTargets([message]);
     setForwardQuery("");
     setForwardingUserId(null);
   }
 
   async function forwardMessageTo(targetUser: UserListItemDTO) {
-    if (!forwardTarget || forwardingUserId) return;
+    if (!forwardTargets.length || forwardingUserId) return;
 
     setForwardingUserId(targetUser.id);
     setError("");
 
     try {
-      const result = await api.forwardMessage(forwardTarget, user.id, targetUser.id);
+      const forwarded: MessageDTO[] = [];
 
-      if (selectedUser?.id === targetUser.id) {
-        setMessages((current) =>
-          current.some((item) => item.id === result.message.id) ? current : [...current, result.message]
-        );
+      for (const source of forwardTargets) {
+        const result = await api.forwardMessage(source, user.id, targetUser.id);
+        forwarded.push(result.message);
       }
 
-      setUsers((current) => upsertUserWithMessage(current, targetUser, result.message));
+      if (selectedUser?.id === targetUser.id) {
+        setMessages((current) => [
+          ...current,
+          ...forwarded.filter((message) => !current.some((item) => item.id === message.id))
+        ]);
+      }
+
+      const lastForwarded = forwarded.at(-1);
+      if (lastForwarded) {
+        setUsers((current) => upsertUserWithMessage(current, targetUser, lastForwarded));
+      }
       if (soundSettings.sentMessages) {
         void playUiSound("sent");
       }
-      setForwardTarget(null);
+      setForwardTargets([]);
       setForwardQuery("");
+      setSelectedMessageIds([]);
     } catch (caught) {
       setError(translateError(caught, t));
     } finally {
       setForwardingUserId(null);
+    }
+  }
+
+  function openForwardSelection() {
+    if (!selectedMessages.length) return;
+    setForwardTargets(selectedMessages);
+    setForwardQuery("");
+    setForwardingUserId(null);
+  }
+
+  function changeMessageSelection(messageIds: string[]) {
+    if (messageIds.length) {
+      setReplyTarget(null);
+    }
+    setSelectedMessageIds(messageIds);
+  }
+
+  async function copySelectedMessages() {
+    if (!selectedMessages.length || !canCopySelection) return;
+
+    setSelectionBusy(true);
+    try {
+      if (selectedMessages.length === 1) {
+        const message = selectedMessages[0];
+        const attachmentUrl = getAttachmentUrl(message.attachmentUrl);
+        const mode = getCopyMode(message, attachmentUrl);
+
+        if (mode === "image") {
+          await copyMessageContent(message, attachmentUrl, mode);
+          setSelectedMessageIds([]);
+          return;
+        }
+      }
+
+      const text = selectedMessages
+        .map((message) => message.text.trim())
+        .filter(Boolean)
+        .join("\n\n");
+
+      if (text) {
+        await writeClipboardText(text);
+        setSelectedMessageIds([]);
+      }
+    } finally {
+      setSelectionBusy(false);
+    }
+  }
+
+  async function saveSelectedMessages() {
+    if (!selectedMessages.length || selectedUser?.isSavedMessages) return;
+
+    setSelectionBusy(true);
+    setError("");
+    try {
+      const savedUser = withSavedMessages(users, user).find((item) => item.isSavedMessages);
+      if (!savedUser) return;
+
+      let lastMessage: MessageDTO | null = null;
+      for (const source of selectedMessages) {
+        const result = await api.forwardMessage(source, user.id, user.id);
+        lastMessage = result.message;
+      }
+
+      if (lastMessage) {
+        setUsers((current) => upsertUserWithMessage(current, savedUser, lastMessage as MessageDTO));
+      }
+      setSelectedMessageIds([]);
+    } catch (caught) {
+      setError(translateError(caught, t));
+    } finally {
+      setSelectionBusy(false);
+    }
+  }
+
+  async function deleteSelectedMessages(mode: "me" | "all") {
+    if (!selectedMessages.length) return;
+
+    setSelectionBusy(true);
+    setError("");
+    try {
+      await Promise.all(selectedMessages.map((message) => api.deleteMessage(message.id, user.id, mode)));
+      const deletedIds = new Set(selectedMessages.map((message) => message.id));
+      const remainingMessages = messages.filter((message) => !deletedIds.has(message.id));
+      const replacement = remainingMessages.at(-1) ?? null;
+
+      setMessages(remainingMessages);
+      setUsers((current) =>
+        sortConversationUsers(
+          current.map((item) =>
+            item.lastMessage && deletedIds.has(item.lastMessage.id) ? { ...item, lastMessage: replacement } : item
+          )
+        )
+      );
+      setSelectedMessageIds([]);
+      void loadUsers(true);
+    } catch (caught) {
+      setError(translateError(caught, t));
+    } finally {
+      setSelectionBusy(false);
     }
   }
 
@@ -805,6 +937,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                 loading={messagesLoading}
                 emptyText={selectedUser.isSavedMessages ? t.chat.savedMessagesEmpty : undefined}
                 savedMessages={selectedUser.isSavedMessages}
+                selectedMessageIds={selectedMessageIds}
                 t={t}
                 pinnedMessage={pinnedMessage}
                 onEditMessage={editMessage}
@@ -813,18 +946,34 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                 onToggleReaction={toggleReaction}
                 onForwardMessage={openForwardMessage}
                 onReplyMessage={setReplyTarget}
+                onSelectionChange={changeMessageSelection}
                 onPinnedConsumed={showNextPinnedMessage}
                 onOpenImage={setImagePreview}
               />
-              <ChatInput
-                disabled={!connected || messagesLoading}
-                t={t}
-                replyTo={replyTarget}
-                replyToAuthorName={replyTarget ? getMessageAuthorName(replyTarget, user, selectedUser) : ""}
-                onCancelReply={() => setReplyTarget(null)}
-                onSend={sendMessage}
-                onTypingChange={sendTypingState}
-              />
+              {selectedMessageIds.length ? (
+                <MessageSelectionBar
+                  count={selectedMessageIds.length}
+                  savedMessages={Boolean(selectedUser.isSavedMessages)}
+                  canCopy={canCopySelection}
+                  busy={selectionBusy}
+                  t={t}
+                  onCopy={copySelectedMessages}
+                  onSave={saveSelectedMessages}
+                  onForward={openForwardSelection}
+                  onDelete={deleteSelectedMessages}
+                  onCancel={() => setSelectedMessageIds([])}
+                />
+              ) : (
+                <ChatInput
+                  disabled={!connected || messagesLoading}
+                  t={t}
+                  replyTo={replyTarget}
+                  replyToAuthorName={replyTarget ? getMessageAuthorName(replyTarget, user, selectedUser) : ""}
+                  onCancelReply={() => setReplyTarget(null)}
+                  onSend={sendMessage}
+                  onTypingChange={sendTypingState}
+                />
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -833,6 +982,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
         {forwardTarget ? (
           <ForwardMessageModal
             message={forwardTarget}
+            messageCount={forwardTargets.length}
             users={forwardUsers}
             query={forwardQuery}
             loading={forwardLoading}
@@ -841,7 +991,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
             onQueryChange={setForwardQuery}
             onSelect={forwardMessageTo}
             onClose={() => {
-              setForwardTarget(null);
+              setForwardTargets([]);
               setForwardQuery("");
             }}
           />
@@ -970,4 +1120,13 @@ function sortConversationUsers(users: UserListItemDTO[]) {
     const secondTime = second.lastMessage ? new Date(second.lastMessage.sentAt).getTime() : 0;
     return secondTime - firstTime;
   });
+}
+
+async function writeClipboardText(value: string) {
+  if (window.minimalChatClipboard) {
+    await window.minimalChatClipboard.writeText(value);
+    return;
+  }
+
+  await navigator.clipboard.writeText(value);
 }
