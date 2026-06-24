@@ -155,6 +155,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
       if (selectedUser) {
         event.preventDefault();
+        selectedUserRef.current = null;
         setSelectedUser(null);
         setMessages([]);
       }
@@ -266,10 +267,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     });
     chatSocket.on("message:delete", (payload: { id: string }) => {
       setMessages((current) => current.filter((item) => item.id !== payload.id));
-      setUsers((current) =>
-        current.map((item) => (item.lastMessage?.id === payload.id ? { ...item, lastMessage: null } : item))
-      );
-      void loadUsers();
+      void loadUsers(true);
     });
     chatSocket.on(
       "reaction:update",
@@ -341,21 +339,30 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     return () => window.clearTimeout(timeout);
   }, [query, user.id]);
 
-  async function loadUsers() {
-    setUsersLoading(true);
-    setError("");
+  async function loadUsers(silent = false) {
+    if (!silent) {
+      setUsersLoading(true);
+      setError("");
+    }
+
     try {
       const result = await api.users(user.id);
       const nextUsers = withSavedMessages(result.users, user);
       setUsers(nextUsers);
-      if (selectedUser) {
-        const freshSelected = nextUsers.find((item) => item.id === selectedUser.id);
+      const activeUser = selectedUserRef.current;
+      if (activeUser) {
+        const freshSelected = nextUsers.find((item) => item.id === activeUser.id);
+        selectedUserRef.current = freshSelected ?? null;
         setSelectedUser(freshSelected ?? null);
       }
     } catch (caught) {
-      setError(translateError(caught, t));
+      if (!silent) {
+        setError(translateError(caught, t));
+      }
     } finally {
-      setUsersLoading(false);
+      if (!silent) {
+        setUsersLoading(false);
+      }
     }
   }
 
@@ -406,7 +413,11 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   }
 
   async function selectUser(nextUser: UserListItemDTO) {
-    setSelectedUser({ ...nextUser, unreadCount: 0 });
+    if (selectedUserRef.current?.id === nextUser.id) return;
+
+    const activeUser = { ...nextUser, unreadCount: 0 };
+    selectedUserRef.current = activeUser;
+    setSelectedUser(activeUser);
     setUsers((current) => current.map((item) => (item.id === nextUser.id ? { ...item, unreadCount: 0 } : item)));
     setMessagesLoading(true);
     setError("");
@@ -565,11 +576,18 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   async function deleteMessage(message: MessageDTO, mode: "me" | "all") {
     try {
       await api.deleteMessage(message.id, user.id, mode);
-      setMessages((current) => current.filter((item) => item.id !== message.id));
+      const remainingMessages = messages.filter((item) => item.id !== message.id);
+      const replacement = remainingMessages.at(-1) ?? null;
+
+      setMessages(remainingMessages);
       setUsers((current) =>
-        current.map((item) => (item.lastMessage?.id === message.id ? { ...item, lastMessage: null } : item))
+        sortConversationUsers(
+          current.map((item) =>
+            item.lastMessage?.id === message.id ? { ...item, lastMessage: replacement } : item
+          )
+        )
       );
-      void loadUsers();
+      void loadUsers(true);
     } catch (caught) {
       setError(translateError(caught, t));
     }
