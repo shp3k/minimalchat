@@ -17,6 +17,7 @@ interface MessageListProps {
   onDeleteMessage: (message: MessageDTO, mode: "me" | "all") => Promise<void>;
   onPinMessage: (message: MessageDTO) => Promise<void>;
   onToggleReaction: (message: MessageDTO, emoji: string) => Promise<void>;
+  onForwardMessage: (message: MessageDTO) => void;
   onReplyMessage: (message: MessageDTO) => void;
   onPinnedConsumed: () => void;
   onOpenImage: (image: { url: string; name: string }) => void;
@@ -34,6 +35,7 @@ export function MessageList({
   onDeleteMessage,
   onPinMessage,
   onToggleReaction,
+  onForwardMessage,
   onReplyMessage,
   onPinnedConsumed,
   onOpenImage
@@ -70,7 +72,7 @@ export function MessageList({
   function openPopup(messageId: string, type: "menu" | "delete" | "reactions") {
     const messageElement = messageRefs.current.get(messageId);
     const scrollArea = scrollAreaRef.current;
-    const estimatedPopupHeight = type === "delete" ? 176 : type === "reactions" ? 58 : 230;
+    const estimatedPopupHeight = type === "delete" ? 176 : type === "reactions" ? 58 : 268;
     const placement =
       messageElement && scrollArea
         ? scrollArea.getBoundingClientRect().bottom - messageElement.getBoundingClientRect().bottom < estimatedPopupHeight + 12
@@ -157,6 +159,7 @@ export function MessageList({
                   onDelete={onDeleteMessage}
                   onPin={onPinMessage}
                   onToggleReaction={onToggleReaction}
+                  onForward={onForwardMessage}
                   onReply={onReplyMessage}
                   onOpenReply={scrollToMessage}
                   onOpenImage={onOpenImage}

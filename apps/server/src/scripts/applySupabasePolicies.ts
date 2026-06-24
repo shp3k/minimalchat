@@ -9,6 +9,7 @@ const statements = [
   `grant select on table storage.buckets to authenticated`,
   `grant select, insert, update, delete on table storage.objects to authenticated`,
   `alter table public."Message" add column if not exists "replyToMessageId" text`,
+  `alter table public."Message" add column if not exists "isForwarded" boolean not null default false`,
   `alter table public."User" add column if not exists "lastSeenAt" timestamp(3)`,
   `alter table public."User" add column if not exists "hideLastSeen" boolean not null default false`,
   `create index if not exists "Message_replyToMessageId_idx" on public."Message" ("replyToMessageId")`,

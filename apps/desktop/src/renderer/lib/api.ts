@@ -84,6 +84,7 @@ type MessageRow = {
   readAt: string | null;
   editedAt: string | null;
   isPinned: boolean;
+  isForwarded: boolean;
   hiddenForSender: boolean;
   hiddenForReceiver: boolean;
   isRead: boolean;
@@ -127,6 +128,7 @@ export function toMessageDTO(row: MessageRow, reactions: MessageReactionDTO[] = 
     readAt: row.readAt ? toUtcIsoString(row.readAt) : null,
     editedAt: row.editedAt ? toUtcIsoString(row.editedAt) : null,
     isPinned: row.isPinned,
+    isForwarded: row.isForwarded ?? false,
     isRead: row.isRead,
     reactions
   };
@@ -509,6 +511,35 @@ export const api = {
       .from("Message")
       .update({ isPinned })
       .eq("id", messageId)
+      .select("*")
+      .single<MessageRow>();
+
+    if (result.error) {
+      throw new ApiRequestError(result.error.message, result.error.code);
+    }
+
+    return { message: toMessageDTO(result.data) };
+  },
+
+  async forwardMessage(
+    source: MessageDTO,
+    senderId: string,
+    receiverId: string
+  ): Promise<{ message: MessageDTO }> {
+    const result = await supabase
+      .from("Message")
+      .insert({
+        id: crypto.randomUUID(),
+        senderId,
+        receiverId,
+        text: source.text,
+        attachmentUrl: source.attachmentUrl,
+        attachmentName: source.attachmentName,
+        attachmentMime: source.attachmentMime,
+        attachmentSize: source.attachmentSize,
+        replyToMessageId: null,
+        isForwarded: true
+      })
       .select("*")
       .single<MessageRow>();
 

@@ -64,6 +64,11 @@ const reactionSchema = z.object({
   emoji: z.enum(["👍", "❤️", "😂", "😮", "😢", "🔥"])
 });
 
+const forwardSchema = z.object({
+  senderId: z.string().min(1),
+  receiverId: z.string().min(1)
+});
+
 router.get("/:userId", async (req, res, next) => {
   try {
     const currentUserId = String(req.query.currentUserId ?? "");
@@ -191,6 +196,45 @@ router.patch("/:messageId/pin", async (req, res, next) => {
     emitMessageUpdate(dto);
 
     res.json({ message: dto });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/:messageId/forward", async (req, res, next) => {
+  try {
+    const data = forwardSchema.parse(req.body);
+    const source = await prisma.message.findUnique({ where: { id: req.params.messageId } });
+
+    if (!source) {
+      throw new HttpError(404, "Message not found", "MESSAGE_NOT_FOUND");
+    }
+
+    if (!isParticipant(source, data.senderId)) {
+      throw new HttpError(403, "You can forward only chat messages", "FORBIDDEN");
+    }
+
+    if (data.senderId === data.receiverId) {
+      throw new HttpError(400, "Cannot forward a message to yourself", "INVALID_RECEIVER");
+    }
+
+    const message = await prisma.message.create({
+      data: {
+        senderId: data.senderId,
+        receiverId: data.receiverId,
+        text: source.text,
+        attachmentUrl: source.attachmentUrl,
+        attachmentName: source.attachmentName,
+        attachmentMime: source.attachmentMime,
+        attachmentSize: source.attachmentSize,
+        deliveredAt: getOnlineUserIds().has(data.receiverId) ? new Date() : null,
+        isForwarded: true
+      }
+    });
+    const dto = toMessageDTO(message);
+    emitMessage(dto);
+
+    res.status(201).json({ message: dto });
   } catch (error) {
     next(error);
   }

@@ -38,6 +38,7 @@ model Message {
   readAt     DateTime?
   editedAt   DateTime?
   isPinned   Boolean  @default(false)
+  isForwarded Boolean @default(false)
   hiddenForSender   Boolean @default(false)
   hiddenForReceiver Boolean @default(false)
   isRead     Boolean  @default(false)

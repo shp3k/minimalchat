@@ -31,6 +31,7 @@ export function toMessageDTO(message: Message, reactions: MessageReaction[] = []
     readAt: message.readAt ? message.readAt.toISOString() : message.isRead ? message.sentAt.toISOString() : null,
     editedAt: message.editedAt ? message.editedAt.toISOString() : null,
     isPinned: message.isPinned,
+    isForwarded: message.isForwarded,
     isRead: message.isRead,
     reactions: reactions.map(toMessageReactionDTO)
   };

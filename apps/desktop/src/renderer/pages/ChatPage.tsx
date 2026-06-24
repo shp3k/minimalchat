@@ -3,6 +3,7 @@ import type { MessageDTO, OnlineUsersDTO, TypingDTO, UserDTO, UserListItemDTO } 
 import { AnimatePresence, motion } from "motion/react";
 import { ChatInput } from "@/components/ChatInput";
 import { EmptyChatState } from "@/components/EmptyChatState";
+import { ForwardMessageModal } from "@/components/ForwardMessageModal";
 import { ImageViewer } from "@/components/ImageViewer";
 import { MessageList } from "@/components/MessageList";
 import { ProfileModal } from "@/components/ProfileModal";
@@ -43,6 +44,11 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [imagePreview, setImagePreview] = useState<{ url: string; name: string } | null>(null);
   const [replyTarget, setReplyTarget] = useState<MessageDTO | null>(null);
+  const [forwardTarget, setForwardTarget] = useState<MessageDTO | null>(null);
+  const [forwardUsers, setForwardUsers] = useState<UserListItemDTO[]>([]);
+  const [forwardQuery, setForwardQuery] = useState("");
+  const [forwardLoading, setForwardLoading] = useState(false);
+  const [forwardingUserId, setForwardingUserId] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [privacyLoading, setPrivacyLoading] = useState(false);
   const [soundSettings, setSoundSettings] = useState<SoundSettings>(() => getStoredSoundSettings());
@@ -121,6 +127,13 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
         return;
       }
 
+      if (forwardTarget) {
+        event.preventDefault();
+        setForwardTarget(null);
+        setForwardQuery("");
+        return;
+      }
+
       if (settingsOpen) {
         event.preventDefault();
         setSettingsOpen(false);
@@ -148,7 +161,48 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [imagePreview, profileOpen, replyTarget, selectedUser, settingsOpen]);
+  }, [forwardTarget, imagePreview, profileOpen, replyTarget, selectedUser, settingsOpen]);
+
+  useEffect(() => {
+    if (!forwardTarget) {
+      setForwardUsers([]);
+      setForwardLoading(false);
+      return;
+    }
+
+    const value = forwardQuery.trim();
+
+    if (value && !value.startsWith("@")) {
+      setForwardUsers([]);
+      setForwardLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setForwardLoading(true);
+    const timeout = window.setTimeout(async () => {
+      try {
+        const result = await api.users(user.id, value || undefined);
+        if (!cancelled) {
+          setForwardUsers(result.users);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setForwardUsers([]);
+          setError(translateError(caught, t));
+        }
+      } finally {
+        if (!cancelled) {
+          setForwardLoading(false);
+        }
+      }
+    }, value ? 220 : 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [forwardQuery, forwardTarget?.id, user.id]);
 
   useEffect(() => {
     const removeNotificationClickListener = window.minimalChatNotifications?.onMessageClick((payload) => {
@@ -562,6 +616,40 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     }
   }
 
+  function openForwardMessage(message: MessageDTO) {
+    setForwardTarget(message);
+    setForwardQuery("");
+    setForwardingUserId(null);
+  }
+
+  async function forwardMessageTo(targetUser: UserListItemDTO) {
+    if (!forwardTarget || forwardingUserId) return;
+
+    setForwardingUserId(targetUser.id);
+    setError("");
+
+    try {
+      const result = await api.forwardMessage(forwardTarget, user.id, targetUser.id);
+
+      if (selectedUser?.id === targetUser.id) {
+        setMessages((current) =>
+          current.some((item) => item.id === result.message.id) ? current : [...current, result.message]
+        );
+      }
+
+      setUsers((current) => upsertUserWithMessage(current, targetUser, result.message));
+      if (soundSettings.sentMessages) {
+        void playUiSound("sent");
+      }
+      setForwardTarget(null);
+      setForwardQuery("");
+    } catch (caught) {
+      setError(translateError(caught, t));
+    } finally {
+      setForwardingUserId(null);
+    }
+  }
+
   async function updateLastSeenPrivacy(hideLastSeen: boolean) {
     setPrivacyLoading(true);
     setError("");
@@ -689,6 +777,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                 onDeleteMessage={deleteMessage}
                 onPinMessage={pinMessage}
                 onToggleReaction={toggleReaction}
+                onForwardMessage={openForwardMessage}
                 onReplyMessage={setReplyTarget}
                 onPinnedConsumed={showNextPinnedMessage}
                 onOpenImage={setImagePreview}
@@ -706,6 +795,24 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
           )}
         </AnimatePresence>
       </section>
+      <AnimatePresence>
+        {forwardTarget ? (
+          <ForwardMessageModal
+            message={forwardTarget}
+            users={forwardUsers}
+            query={forwardQuery}
+            loading={forwardLoading}
+            sendingUserId={forwardingUserId}
+            t={t}
+            onQueryChange={setForwardQuery}
+            onSelect={forwardMessageTo}
+            onClose={() => {
+              setForwardTarget(null);
+              setForwardQuery("");
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
       <AnimatePresence>
         {profileOpen ? (
           <ProfileModal
@@ -791,4 +898,22 @@ function getNotificationBody(message: MessageDTO, t: ReturnType<typeof getTransl
   }
 
   return t.chat.originalMessage;
+}
+
+function upsertUserWithMessage(
+  users: UserListItemDTO[],
+  targetUser: UserListItemDTO,
+  message: MessageDTO
+) {
+  const existing = users.find((item) => item.id === targetUser.id);
+  const rest = users.filter((item) => item.id !== targetUser.id);
+
+  return [
+    {
+      ...(existing ?? targetUser),
+      lastMessage: message,
+      unreadCount: existing?.unreadCount ?? targetUser.unreadCount ?? 0
+    },
+    ...rest
+  ];
 }

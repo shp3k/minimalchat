@@ -30,6 +30,7 @@ export interface MessageDTO {
   readAt: string | null;
   editedAt: string | null;
   isPinned: boolean;
+  isForwarded: boolean;
   isRead: boolean;
   reactions: MessageReactionDTO[];
 }

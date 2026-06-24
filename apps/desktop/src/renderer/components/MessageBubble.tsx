@@ -7,6 +7,7 @@ import {
   Download,
   ExternalLink,
   FileIcon,
+  Forward,
   Pause,
   Pencil,
   Pin,
@@ -34,6 +35,7 @@ interface MessageBubbleProps {
   onDelete: (message: MessageDTO, mode: "me" | "all") => Promise<void>;
   onPin: (message: MessageDTO) => Promise<void>;
   onToggleReaction: (message: MessageDTO, emoji: string) => Promise<void>;
+  onForward: (message: MessageDTO) => void;
   onReply: (message: MessageDTO) => void;
   onOpenReply: (messageId: string) => void;
   onOpenImage: (image: { url: string; name: string }) => void;
@@ -54,6 +56,7 @@ export function MessageBubble({
   onDelete,
   onPin,
   onToggleReaction,
+  onForward,
   onReply,
   onOpenReply,
   onOpenImage,
@@ -122,6 +125,10 @@ export function MessageBubble({
               }}
               onReply={() => {
                 onReply(message);
+                onPopupChange(null);
+              }}
+              onForward={() => {
+                onForward(message);
                 onPopupChange(null);
               }}
               onEdit={() => {
@@ -258,6 +265,12 @@ export function MessageBubble({
             onReaction={(emoji) => void onToggleReaction(message, emoji)}
           />
         ) : null}
+        {message.isForwarded ? (
+          <div className={cn("mb-2 flex items-center gap-1.5 text-[11px] font-medium", mine ? "text-white/78" : "text-accent")}>
+            <Forward size={12} />
+            {t.chat.forwarded}
+          </div>
+        ) : null}
       </div>
       {!editing ? (
         <button
@@ -344,6 +357,7 @@ interface MessageMenuProps {
   reactions: MessageDTO["reactions"];
   onReaction: (emoji: string) => void;
   onReply: () => void;
+  onForward: () => void;
   onEdit: () => void;
   onCopy: () => void;
   onPin: () => void | Promise<void>;
@@ -360,6 +374,7 @@ function MessageMenu({
   reactions,
   onReaction,
   onReply,
+  onForward,
   onEdit,
   onCopy,
   onPin,
@@ -389,6 +404,7 @@ function MessageMenu({
         ))}
       </div>
       <MenuButton icon={<Reply size={15} />} label={t.chat.replyMessage} onClick={onReply} />
+      <MenuButton icon={<Forward size={15} />} label={t.chat.forwardMessage} onClick={onForward} />
       {mine ? <MenuButton icon={<Pencil size={15} />} label={t.chat.editMessage} onClick={onEdit} /> : null}
       {copyMode ? <MenuButton icon={<Copy size={15} />} label={t.chat.copyMessage} onClick={onCopy} /> : null}
       <MenuButton icon={<Pin size={15} />} label={pinned ? t.chat.unpinMessage : t.chat.pinMessage} onClick={onPin} />
