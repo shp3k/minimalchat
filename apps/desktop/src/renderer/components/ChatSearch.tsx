@@ -79,7 +79,7 @@ export function ChatSearch({
               }}
             />
             <span className="shrink-0 px-1 text-xs tabular-nums text-secondaryText">
-              {query.trim() ? `${resultCount ? activeResult + 1 : 0}/${resultCount}` : ""}
+              {query.trim() ? `${resultCount ? resultCount - activeResult : 0}/${resultCount}` : ""}
             </span>
             <SearchButton label={t.chat.previousResult} disabled={!resultCount} onClick={onPrevious}>
               <ChevronUp size={16} />
