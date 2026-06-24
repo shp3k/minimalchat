@@ -196,6 +196,12 @@ export function MessageBubble({
             />
           ) : null}
         </AnimatePresence>
+        {message.isForwarded ? (
+          <div className={cn("mb-2 flex items-center gap-1.5 text-[11px] font-medium", mine ? "text-white/78" : "text-accent")}>
+            <Forward size={12} />
+            {t.chat.forwarded}
+          </div>
+        ) : null}
         {message.isPinned ? (
           <div className={cn("mb-2 flex items-center gap-1.5 text-[11px] font-medium", mine ? "text-white/75" : "text-secondaryText")}>
             <Pin size={12} />
@@ -281,12 +287,6 @@ export function MessageBubble({
             mine={mine}
             onReaction={(emoji) => void onToggleReaction(message, emoji)}
           />
-        ) : null}
-        {message.isForwarded ? (
-          <div className={cn("mb-2 flex items-center gap-1.5 text-[11px] font-medium", mine ? "text-white/78" : "text-accent")}>
-            <Forward size={12} />
-            {t.chat.forwarded}
-          </div>
         ) : null}
       </div>
       {!editing ? (
