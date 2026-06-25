@@ -131,7 +131,7 @@ async function fetchSafePublicResource(value, options, maxRedirects = 4) {
 
     const response = await net.fetch(currentUrl, { ...options, redirect: "manual" });
     if (response.status < 300 || response.status >= 400) {
-      return response;
+      return { response, finalUrl: currentUrl };
     }
 
     const location = response.headers.get("location");
@@ -174,7 +174,7 @@ async function fetchLinkPreview(value) {
   }
 
   try {
-    const response = await fetchSafePublicResource(value, {
+    const resource = await fetchSafePublicResource(value, {
       signal: AbortSignal.timeout(7000),
       headers: {
         "User-Agent":
@@ -184,10 +184,11 @@ async function fetchLinkPreview(value) {
       }
     });
 
-    if (!response?.ok || !(await isSafePublicUrl(response.url))) {
+    if (!resource?.response.ok || !(await isSafePublicUrl(resource.finalUrl))) {
       return { ok: false, code: "PREVIEW_UNAVAILABLE" };
     }
 
+    const { response, finalUrl: pageUrl } = resource;
     const contentType = response.headers.get("content-type") ?? "";
     const contentLength = Number(response.headers.get("content-length") ?? 0);
     if (!contentType.includes("text/html") || contentLength > 1_500_000) {
@@ -195,7 +196,6 @@ async function fetchLinkPreview(value) {
     }
 
     const html = new TextDecoder("utf-8").decode(await readResponseBuffer(response, 1_500_000));
-    const pageUrl = response.url;
     const title = getMetaContent(html, ["og:title", "twitter:title"]) || getTitle(html);
     const description = getMetaContent(html, ["og:description", "twitter:description", "description"]);
     const siteName = getMetaContent(html, ["og:site_name"]) || new URL(pageUrl).hostname.replace(/^www\./, "");
@@ -222,12 +222,13 @@ async function fetchLinkPreview(value) {
 
 async function fetchPreviewImage(url) {
   try {
-    const response = await fetchSafePublicResource(url, {
+    const resource = await fetchSafePublicResource(url, {
       signal: AbortSignal.timeout(5000),
       headers: { Accept: "image/*" }
     });
-    if (!response?.ok || !(await isSafePublicUrl(response.url))) return null;
+    if (!resource?.response.ok || !(await isSafePublicUrl(resource.finalUrl))) return null;
 
+    const { response } = resource;
     const contentType = response.headers.get("content-type") ?? "";
     const contentLength = Number(response.headers.get("content-length") ?? 0);
     if (!contentType.startsWith("image/") || contentLength > 2_000_000) return null;
