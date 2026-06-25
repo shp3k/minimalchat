@@ -1,5 +1,6 @@
 ﻿const { app, BrowserWindow, Notification, clipboard, ipcMain, nativeImage, session, shell } = require("electron");
 const { spawn } = require("node:child_process");
+const { Menu, Tray } = require("electron");
 const { net } = require("electron");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -15,7 +16,9 @@ try {
 }
 
 let mainWindow = null;
+let tray = null;
 let serverProcess = null;
+let isQuitting = false;
 let updatesReady = false;
 let checkingForUpdates = false;
 let updateDownloaded = false;
@@ -107,6 +110,8 @@ async function ensureLocalServer() {
 }
 
 function createWindow() {
+  const windowIconPath = path.join(__dirname, "../../build/icon.png");
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 760,
@@ -115,6 +120,7 @@ function createWindow() {
     frame: false,
     titleBarStyle: "hidden",
     backgroundColor: "#09090B",
+    icon: windowIconPath,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -125,6 +131,13 @@ function createWindow() {
 
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
+  });
+
+  mainWindow.on("close", (event) => {
+    if (isQuitting) return;
+
+    event.preventDefault();
+    mainWindow.hide();
   });
 
   mainWindow.webContents.on("console-message", (details) => {
@@ -162,6 +175,33 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, "../../dist/renderer/index.html"));
   }
+}
+
+function createTray() {
+  if (tray) return;
+
+  const trayIconPath = path.join(__dirname, "../../build/tray.png");
+  const trayImage = nativeImage.createFromPath(trayIconPath);
+  tray = new Tray(process.platform === "win32" ? trayImage.resize({ width: 16, height: 16 }) : trayImage);
+  tray.setToolTip("MinimalChat");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "Открыть MinimalChat",
+        click: focusMainWindow
+      },
+      { type: "separator" },
+      {
+        label: "Выйти",
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        }
+      }
+    ])
+  );
+  tray.on("click", focusMainWindow);
+  tray.on("double-click", focusMainWindow);
 }
 
 function sendUpdateStatus(status) {
@@ -284,6 +324,7 @@ app.whenReady().then(async () => {
     await ensureLocalServer();
   }
   createWindow();
+  createTray();
   setupAutoUpdates();
 
   app.on("activate", () => {
@@ -300,6 +341,10 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  isQuitting = true;
+  tray?.destroy();
+  tray = null;
+
   if (serverProcess && !serverProcess.killed) {
     serverProcess.kill();
   }

@@ -21,12 +21,16 @@
     "files": [
       "dist/renderer/**/*",
       "src/main/**/*",
+      "build/icon.png",
+      "build/tray.png",
+      "build/tray@2x.png",
       "package.json"
     ],
     "extraMetadata": {
       "main": "src/main/main.cjs"
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",

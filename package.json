@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "icons": "node scripts/generate-icons.mjs",
     "dev": "npm run dev -w apps/desktop",
     "build": "npm run build -w @minimalchat/shared && npm run build -w apps/server && npm run build -w apps/desktop",
     "db:migrate": "npm run db:migrate -w apps/server",
@@ -19,6 +20,8 @@
   "devDependencies": {
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.5",
     "typescript": "^5.8.3",
     "wait-on": "^8.0.3"
   }
