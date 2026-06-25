@@ -100,6 +100,8 @@ export const translations = {
       lastSeenRecently: "last seen recently",
       lastSeenJustNow: "last seen just now",
       lastSeenAt: "last seen at",
+      lastSeenYesterdayAt: "last seen yesterday at",
+      lastSeenOn: "last seen",
       typing: "typing..."
     },
     profile: {
@@ -276,6 +278,8 @@ export const translations = {
       lastSeenRecently: "был(а) недавно",
       lastSeenJustNow: "был(а) только что",
       lastSeenAt: "был(а) в",
+      lastSeenYesterdayAt: "был(а) вчера в",
+      lastSeenOn: "был(а)",
       typing: "печатает..."
     },
     profile: {

@@ -30,8 +30,32 @@ export function getPresenceText(
     return t.chat.lastSeenJustNow;
   }
 
-  return `${t.chat.lastSeenAt} ${lastSeenDate.toLocaleTimeString([], {
+  const currentDate = new Date(now);
+  const time = lastSeenDate.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit"
-  })}`;
+  });
+  const daysAgo =
+    (Date.UTC(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()) -
+      Date.UTC(lastSeenDate.getFullYear(), lastSeenDate.getMonth(), lastSeenDate.getDate())) /
+    86_400_000;
+
+  if (daysAgo === 0) {
+    return `${t.chat.lastSeenAt} ${time}`;
+  }
+
+  if (daysAgo === 1) {
+    return `${t.chat.lastSeenYesterdayAt} ${time}`;
+  }
+
+  const russian = t.chat.online === "онлайн";
+  const date = lastSeenDate.toLocaleDateString(russian ? "ru-RU" : "en-US", {
+    day: "numeric",
+    month: "long",
+    ...(lastSeenDate.getFullYear() === currentDate.getFullYear() ? {} : { year: "numeric" })
+  });
+
+  return russian
+    ? `${t.chat.lastSeenOn} ${date} в ${time}`
+    : `${t.chat.lastSeenOn} ${date} at ${time}`;
 }
