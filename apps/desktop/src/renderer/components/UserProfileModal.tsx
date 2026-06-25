@@ -1,7 +1,7 @@
-import type { MessageDTO, UserDTO } from "@minimalchat/shared";
-import { AtSign, CalendarDays, FileIcon, Images, UserRound, X } from "lucide-react";
+import type { MessageDTO, UserListItemDTO } from "@minimalchat/shared";
+import { AtSign, CalendarDays, FileIcon, Images, Mail, ShieldBan, UserMinus, UserPlus, UserRound, X } from "lucide-react";
 import { motion } from "motion/react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { getAttachmentUrl } from "@/components/MessageBubble";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -9,16 +9,20 @@ import type { Language, Translation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 interface UserProfileModalProps {
-  user: UserDTO;
+  user: UserListItemDTO;
   messages: MessageDTO[];
   language: Language;
   t: Translation;
   onClose: () => void;
   onOpenImage: (image: { url: string; name: string }) => void;
+  onContactChange: (enabled: boolean) => Promise<void>;
+  onBlockChange: (enabled: boolean) => Promise<void>;
 }
 
-export function UserProfileModal({ user, messages, language, t, onClose, onOpenImage }: UserProfileModalProps) {
+export function UserProfileModal({ user, messages, language, t, onClose, onOpenImage, onContactChange, onBlockChange }: UserProfileModalProps) {
   const [tab, setTab] = useState<"media" | "files">("media");
+  const [busy, setBusy] = useState(false);
+  const [ready, setReady] = useState(false);
   const attachments = useMemo(
     () => messages.filter((message) => message.attachmentUrl && message.attachmentName),
     [messages]
@@ -26,6 +30,11 @@ export function UserProfileModal({ user, messages, language, t, onClose, onOpenI
   const media = attachments.filter((message) => isMedia(message));
   const files = attachments.filter((message) => !isMedia(message));
   const items = tab === "media" ? media : files;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setReady(true), 160);
+    return () => window.clearTimeout(timer);
+  }, [user.id]);
 
   return (
     <div className="absolute inset-0 z-50 grid place-items-center bg-black/60 px-6 backdrop-blur-sm">
@@ -50,7 +59,54 @@ export function UserProfileModal({ user, messages, language, t, onClose, onOpenI
           </Button>
         </div>
 
+        {!ready ? (
+          <div className="min-h-0 flex-1 space-y-3 overflow-hidden p-5">
+            <div className="skeleton h-11 rounded-xl" />
+            <div className="skeleton h-16 rounded-xl" />
+            <div className="skeleton h-16 rounded-xl" />
+            <div className="grid grid-cols-3 gap-2 pt-2">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="skeleton aspect-square rounded-xl" />
+              ))}
+            </div>
+          </div>
+        ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="grid grid-cols-2 gap-2 border-b border-borderSoft p-4">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await onContactChange(!user.isContact);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {user.isContact ? <UserMinus size={16} /> : <UserPlus size={16} />}
+              {user.isContact ? t.chat.removeContact : t.chat.addContact}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy}
+              className={user.isBlockedByMe ? "text-secondaryText" : "text-red-300 hover:bg-red-500/10 hover:text-red-200"}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await onBlockChange(!user.isBlockedByMe);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <ShieldBan size={16} />
+              {user.isBlockedByMe ? t.chat.unblockUser : t.chat.blockUser}
+            </Button>
+          </div>
           <div className="space-y-3 border-b border-borderSoft p-5">
             <InfoRow icon={<UserRound size={16} />} label={t.profile.bio}>
               {user.bio || t.profile.bioEmpty}
@@ -58,6 +114,11 @@ export function UserProfileModal({ user, messages, language, t, onClose, onOpenI
             <InfoRow icon={<AtSign size={16} />} label={t.profile.handle}>
               {user.handle ? `@${user.handle}` : "-"}
             </InfoRow>
+            {user.email ? (
+              <InfoRow icon={<Mail size={16} />} label={t.auth.email}>
+                {user.email}
+              </InfoRow>
+            ) : null}
             <InfoRow icon={<CalendarDays size={16} />} label={t.profile.registeredAt}>
               {formatRegistrationDate(user.createdAt, language)}
             </InfoRow>
@@ -96,6 +157,7 @@ export function UserProfileModal({ user, messages, language, t, onClose, onOpenI
             )}
           </div>
         </div>
+        )}
       </motion.div>
     </div>
   );
@@ -135,6 +197,7 @@ function MediaItem({
   message: MessageDTO;
   onOpenImage: (image: { url: string; name: string }) => void;
 }) {
+  const [loaded, setLoaded] = useState(false);
   const url = getAttachmentUrl(message.attachmentUrl);
   if (!url) return null;
   const name = message.attachmentName || "media";
@@ -143,10 +206,10 @@ function MediaItem({
     return (
       <button
         type="button"
-        className="aspect-square overflow-hidden rounded-xl border border-borderSoft bg-background transition hover:brightness-110"
+        className={cn("aspect-square overflow-hidden rounded-xl border border-borderSoft bg-background transition hover:brightness-110", !loaded && "skeleton")}
         onClick={() => onOpenImage({ url, name })}
       >
-        <img src={url} alt={name} className="h-full w-full object-cover" />
+        <img src={url} alt={name} onLoad={() => setLoaded(true)} className={cn("h-full w-full object-cover transition-opacity", loaded ? "opacity-100" : "opacity-0")} />
       </button>
     );
   }

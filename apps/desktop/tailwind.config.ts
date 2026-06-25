@@ -6,12 +6,12 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#09090B",
-        panel: "#111113",
-        panel2: "#18181B",
-        borderSoft: "rgba(255,255,255,0.08)",
-        primaryText: "#F4F4F5",
-        secondaryText: "#A1A1AA",
+        background: "rgb(var(--background) / <alpha-value>)",
+        panel: "rgb(var(--panel) / <alpha-value>)",
+        panel2: "rgb(var(--panel-2) / <alpha-value>)",
+        borderSoft: "var(--border-soft)",
+        primaryText: "rgb(var(--text-primary) / <alpha-value>)",
+        secondaryText: "rgb(var(--text-secondary) / <alpha-value>)",
         accent: "#7C3AED",
         accent2: "#6366F1"
       },

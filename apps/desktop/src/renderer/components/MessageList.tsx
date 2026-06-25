@@ -243,7 +243,7 @@ export function MessageList({
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-7 py-5">
         {Array.from({ length: 8 }).map((_, index) => (
           <div key={index} className={index % 2 ? "flex justify-end" : "flex justify-start"}>
-            <div className="h-16 w-[42%] animate-pulse rounded-[22px] bg-white/[0.04]" />
+            <div className={cn("skeleton rounded-2xl", index % 3 === 0 ? "h-20 w-[48%]" : "h-12 w-[34%]")} />
           </div>
         ))}
       </div>

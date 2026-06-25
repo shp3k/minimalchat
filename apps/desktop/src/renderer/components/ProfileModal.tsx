@@ -1,7 +1,8 @@
 import { ChangeEvent, FormEvent, PointerEvent, useRef, useState } from "react";
 import type { UserDTO } from "@minimalchat/shared";
-import { AtSign, Camera, Copy, Settings, Trash2, X } from "lucide-react";
-import { motion } from "motion/react";
+import { AtSign, Camera, Copy, QrCode, Settings, Trash2, X } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { QRCodeSVG } from "qrcode.react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,7 @@ export function ProfileModal({ user, t, loading, error, onClose, onOpenSettings,
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user.avatarUrl);
   const [avatarError, setAvatarError] = useState("");
   const [cropSource, setCropSource] = useState("");
+  const [qrOpen, setQrOpen] = useState(false);
   const [cropImageSize, setCropImageSize] = useState({ width: 1, height: 1 });
   const [cropZoom, setCropZoom] = useState(1);
   const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 });
@@ -169,6 +171,38 @@ export function ProfileModal({ user, t, loading, error, onClose, onOpenSettings,
         </div>
 
         <div className="space-y-4">
+          {user.handle ? (
+            <div className="rounded-2xl border border-borderSoft bg-background p-3">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-3 text-sm font-semibold text-primaryText"
+                onClick={() => setQrOpen((current) => !current)}
+              >
+                <span className="flex items-center gap-2">
+                  <QrCode size={17} className="text-accent" />
+                  {t.profile.profileQr}
+                </span>
+                <span className="truncate text-xs text-secondaryText">@{user.handle}</span>
+              </button>
+              <AnimatePresence>
+                {qrOpen ? (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-4 flex flex-col items-center">
+                      <div className="rounded-2xl bg-white p-4">
+                        <QRCodeSVG value={`minimalchat://user/@${user.handle}`} size={176} level="M" />
+                      </div>
+                      <p className="mt-3 text-center text-xs leading-5 text-secondaryText">{t.profile.qrHelp}</p>
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </div>
+          ) : null}
           <div className="rounded-3xl border border-borderSoft bg-background p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <span className="text-xs font-medium text-secondaryText">{t.profile.avatar}</span>

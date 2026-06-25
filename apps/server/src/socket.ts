@@ -126,6 +126,21 @@ export function setupSocket(io: Server) {
           return;
         }
 
+        const blocked = await prisma.userBlock.findFirst({
+          where: {
+            OR: [
+              { blockerId: payload.senderId, blockedId: payload.receiverId },
+              { blockerId: payload.receiverId, blockedId: payload.senderId }
+            ]
+          },
+          select: { id: true }
+        });
+
+        if (blocked) {
+          ack?.({ ok: false, error: "Message is blocked", code: "BLOCKED" });
+          return;
+        }
+
         const message = await prisma.message.create({
           data: {
             senderId: payload.senderId,

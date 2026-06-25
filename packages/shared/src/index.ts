@@ -7,6 +7,10 @@ export interface UserDTO {
   bio: string;
   lastSeenAt: string | null;
   hideLastSeen: boolean;
+  onlineVisibility: ProfileVisibility;
+  avatarVisibility: ProfileVisibility;
+  emailVisibility: ProfileVisibility;
+  lastSeenVisibility: ProfileVisibility;
   createdAt: string;
   online?: boolean;
 }
@@ -15,6 +19,19 @@ export interface UserListItemDTO extends UserDTO {
   lastMessage?: MessageDTO | null;
   unreadCount: number;
   isSavedMessages?: boolean;
+  isContact?: boolean;
+  isBlockedByMe?: boolean;
+  hasBlockedMe?: boolean;
+  notificationsMuted?: boolean;
+}
+
+export type ProfileVisibility = "everyone" | "nobody";
+
+export interface PrivacySettingsDTO {
+  onlineVisibility: ProfileVisibility;
+  avatarVisibility: ProfileVisibility;
+  emailVisibility: ProfileVisibility;
+  lastSeenVisibility: ProfileVisibility;
 }
 
 export interface MessageDTO {

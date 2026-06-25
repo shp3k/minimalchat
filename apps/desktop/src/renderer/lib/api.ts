@@ -3,6 +3,7 @@ import type {
   LoginDTO,
   MessageDTO,
   MessageReactionDTO,
+  PrivacySettingsDTO,
   RegisterDTO,
   SendMessageDTO,
   UpdateProfileDTO,
@@ -67,6 +68,10 @@ type UserRow = {
   bio: string | null;
   lastSeenAt: string | null;
   hideLastSeen: boolean;
+  onlineVisibility: "everyone" | "nobody" | null;
+  avatarVisibility: "everyone" | "nobody" | null;
+  emailVisibility: "everyone" | "nobody" | null;
+  lastSeenVisibility: "everyone" | "nobody" | null;
   createdAt: string;
 };
 
@@ -91,6 +96,27 @@ type MessageRow = {
   isRead: boolean;
 };
 
+type ContactRow = {
+  id: string;
+  ownerId: string;
+  contactId: string;
+  createdAt: string;
+};
+
+type UserBlockRow = {
+  id: string;
+  blockerId: string;
+  blockedId: string;
+  createdAt: string;
+};
+
+type ChatPreferenceRow = {
+  id: string;
+  ownerId: string;
+  targetId: string;
+  muted: boolean;
+};
+
 export type MessageReactionRow = {
   id: string;
   messageId: string;
@@ -109,6 +135,10 @@ export function toUserDTO(row: UserRow, online = false): UserDTO {
     bio: row.bio ?? "",
     lastSeenAt: row.lastSeenAt ? toUtcIsoString(row.lastSeenAt) : null,
     hideLastSeen: row.hideLastSeen ?? false,
+    onlineVisibility: row.onlineVisibility ?? "everyone",
+    avatarVisibility: row.avatarVisibility ?? "everyone",
+    emailVisibility: row.emailVisibility ?? "nobody",
+    lastSeenVisibility: row.lastSeenVisibility ?? (row.hideLastSeen ? "nobody" : "everyone"),
     createdAt: toUtcIsoString(row.createdAt),
     online
   };
@@ -134,6 +164,23 @@ export function toMessageDTO(row: MessageRow, reactions: MessageReactionDTO[] = 
     isRead: row.isRead,
     reactions
   };
+}
+
+function applyProfilePrivacy(user: UserDTO, viewerId: string) {
+  if (user.id === viewerId) return user;
+
+  return {
+    ...user,
+    email: user.emailVisibility === "everyone" ? user.email : "",
+    avatarUrl: user.avatarVisibility === "everyone" ? user.avatarUrl : null,
+    online: user.onlineVisibility === "everyone" ? user.online : false,
+    lastSeenAt: user.lastSeenVisibility === "everyone" ? user.lastSeenAt : null,
+    hideLastSeen: user.lastSeenVisibility === "nobody"
+  };
+}
+
+export function toVisibleUserDTO(row: UserRow, viewerId: string, online = false) {
+  return applyProfilePrivacy(toUserDTO(row, online), viewerId);
 }
 
 export function toMessageReactionDTO(row: MessageReactionRow): MessageReactionDTO {
@@ -169,6 +216,11 @@ async function ensureProfile(user: { id: string; email?: string | null; user_met
   }
 
   if (existing.data) {
+    if (user.email && existing.data.email !== user.email) {
+      const updated = await supabase.from("User").update({ email: user.email }).eq("id", user.id).select("*").single<UserRow>();
+      if (updated.error) throw new ApiRequestError(updated.error.message, updated.error.code);
+      return toUserDTO(updated.data);
+    }
     return toUserDTO(existing.data);
   }
 
@@ -225,10 +277,23 @@ async function countUnreadMessages(currentUserId: string, userId: string) {
 }
 
 async function userListItem(currentUserId: string, row: UserRow): Promise<UserListItemDTO> {
+  const [contact, blockedByMe, hasBlockedMe, preference] = await Promise.all([
+    supabase.from("Contact").select("id").eq("ownerId", currentUserId).eq("contactId", row.id).maybeSingle(),
+    supabase.from("UserBlock").select("id").eq("blockerId", currentUserId).eq("blockedId", row.id).maybeSingle(),
+    supabase.from("UserBlock").select("id").eq("blockerId", row.id).eq("blockedId", currentUserId).maybeSingle(),
+    supabase.from("ChatPreference").select("*").eq("ownerId", currentUserId).eq("targetId", row.id).maybeSingle<ChatPreferenceRow>()
+  ]);
+  const error = contact.error ?? blockedByMe.error ?? hasBlockedMe.error ?? preference.error;
+  if (error) throw new ApiRequestError(error.message, error.code);
+
   return {
-    ...toUserDTO(row),
+    ...applyProfilePrivacy(toUserDTO(row), currentUserId),
     lastMessage: await findLastMessage(currentUserId, row.id),
-    unreadCount: await countUnreadMessages(currentUserId, row.id)
+    unreadCount: await countUnreadMessages(currentUserId, row.id),
+    isContact: Boolean(contact.data),
+    isBlockedByMe: Boolean(blockedByMe.data),
+    hasBlockedMe: Boolean(hasBlockedMe.data),
+    notificationsMuted: Boolean(preference.data?.muted)
   };
 }
 
@@ -365,6 +430,21 @@ export const api = {
     return { user: toUserDTO(result.data, true) };
   },
 
+  async updatePrivacy(currentUserId: string, settings: PrivacySettingsDTO): Promise<{ user: UserDTO }> {
+    const result = await supabase
+      .from("User")
+      .update({
+        ...settings,
+        hideLastSeen: settings.lastSeenVisibility === "nobody"
+      })
+      .eq("id", currentUserId)
+      .select("*")
+      .single<UserRow>();
+
+    if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+    return { user: toUserDTO(result.data, true) };
+  },
+
   async users(currentUserId: string, search?: string): Promise<{ users: UserListItemDTO[] }> {
     if (search?.trim()) {
       const handle = normalizeHandle(search);
@@ -446,6 +526,99 @@ export const api = {
     return {
       messages: rows.map((row) => toMessageDTO(row, reactionsByMessage.get(row.id) ?? []))
     };
+  },
+
+  async contacts(currentUserId: string): Promise<{ users: UserListItemDTO[] }> {
+    const contacts = await supabase
+      .from("Contact")
+      .select("*")
+      .eq("ownerId", currentUserId)
+      .order("createdAt", { ascending: false })
+      .returns<ContactRow[]>();
+
+    if (contacts.error) throw new ApiRequestError(contacts.error.message, contacts.error.code);
+    const ids = (contacts.data ?? []).map((item) => item.contactId);
+    if (!ids.length) return { users: [] };
+
+    const users = await supabase.from("User").select("*").in("id", ids).returns<UserRow[]>();
+    if (users.error) throw new ApiRequestError(users.error.message, users.error.code);
+
+    const byId = new Map((users.data ?? []).map((item) => [item.id, item]));
+    return {
+      users: await Promise.all(ids.map((id) => byId.get(id)).filter(Boolean).map((row) => userListItem(currentUserId, row as UserRow)))
+    };
+  },
+
+  async setContact(currentUserId: string, contactId: string, enabled: boolean) {
+    if (enabled) {
+      const result = await supabase.from("Contact").upsert(
+        { id: crypto.randomUUID(), ownerId: currentUserId, contactId },
+        { onConflict: "ownerId,contactId", ignoreDuplicates: true }
+      );
+      if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+    } else {
+      const result = await supabase.from("Contact").delete().eq("ownerId", currentUserId).eq("contactId", contactId);
+      if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+    }
+    return { enabled };
+  },
+
+  async setBlocked(currentUserId: string, blockedId: string, enabled: boolean) {
+    if (enabled) {
+      const result = await supabase.from("UserBlock").upsert(
+        { id: crypto.randomUUID(), blockerId: currentUserId, blockedId },
+        { onConflict: "blockerId,blockedId", ignoreDuplicates: true }
+      );
+      if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+    } else {
+      const result = await supabase.from("UserBlock").delete().eq("blockerId", currentUserId).eq("blockedId", blockedId);
+      if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+    }
+    return { enabled };
+  },
+
+  async setChatMuted(currentUserId: string, targetId: string, muted: boolean) {
+    const result = await supabase.from("ChatPreference").upsert(
+      {
+        id: crypto.randomUUID(),
+        ownerId: currentUserId,
+        targetId,
+        muted,
+        updatedAt: new Date().toISOString()
+      },
+      { onConflict: "ownerId,targetId" }
+    );
+    if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+    return { muted };
+  },
+
+  async mutedChatIds(currentUserId: string) {
+    const result = await supabase
+      .from("ChatPreference")
+      .select("targetId")
+      .eq("ownerId", currentUserId)
+      .eq("muted", true)
+      .returns<Array<{ targetId: string }>>();
+    if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+    return (result.data ?? []).map((item) => item.targetId);
+  },
+
+  async updateEmail(currentUserId: string, email: string) {
+    const auth = await supabase.auth.updateUser({ email: email.trim() });
+    if (auth.error) throw new ApiRequestError(auth.error.message, getAuthErrorCode(auth.error));
+
+    if (auth.data.user.email === email.trim()) {
+      const profile = await supabase.from("User").update({ email: email.trim() }).eq("id", currentUserId);
+      if (profile.error) throw new ApiRequestError(profile.error.message, profile.error.code);
+    }
+
+    return { email: auth.data.user.email ?? email.trim(), confirmationRequired: auth.data.user.email !== email.trim() };
+  },
+
+  async updatePassword(password: string) {
+    const result = await supabase.auth.updateUser({ password });
+    if (result.error) throw new ApiRequestError(result.error.message, getAuthErrorCode(result.error));
+    return { ok: true };
   },
 
   async sendMessage(payload: SendMessageDTO): Promise<{ message: MessageDTO }> {

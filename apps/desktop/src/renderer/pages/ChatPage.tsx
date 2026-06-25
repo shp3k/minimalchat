@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MessageDTO, OnlineUsersDTO, TypingDTO, UserDTO, UserListItemDTO } from "@minimalchat/shared";
+import type { MessageDTO, OnlineUsersDTO, PrivacySettingsDTO, TypingDTO, UserDTO, UserListItemDTO } from "@minimalchat/shared";
 import { Bookmark } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { ChatInput } from "@/components/ChatInput";
@@ -30,23 +30,27 @@ import {
   storeDrafts,
   storeSoundSettings,
   type ChatDrafts,
-  type SoundSettings
+  type SoundSettings,
+  type Theme
 } from "@/lib/storage";
 import { createChatSocket, sendSocketMessage, type ChatSocket } from "@/lib/socket";
 
 interface ChatPageProps {
   user: UserDTO;
   language: Language;
+  theme: Theme;
   onUserUpdate: (user: UserDTO) => void;
   onLanguageChange: (language: Language) => void;
+  onThemeChange: (theme: Theme) => void;
   onLogout: () => void;
 }
 
-export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLogout }: ChatPageProps) {
+export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange, onThemeChange, onLogout }: ChatPageProps) {
   const [users, setUsers] = useState<UserListItemDTO[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserListItemDTO | null>(null);
   const [messages, setMessages] = useState<MessageDTO[]>([]);
   const [query, setQuery] = useState("");
+  const [listMode, setListMode] = useState<"chats" | "contacts">("chats");
   const [usersLoading, setUsersLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -80,6 +84,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const typingTimersRef = useRef<Record<string, number>>({});
   const usersRefreshTimerRef = useRef<number | null>(null);
   const soundSettingsRef = useRef(soundSettings);
+  const mutedUserIdsRef = useRef(new Set<string>());
   const t = getTranslation(language);
   const forwardTarget = forwardTargets[0] ?? null;
   const selectedMessages = useMemo(
@@ -105,6 +110,12 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     () => users.reduce((sum, item) => sum + Math.max(0, item.unreadCount), 0),
     [users]
   );
+
+  useEffect(() => {
+    void api.mutedChatIds(user.id).then((ids) => {
+      mutedUserIdsRef.current = new Set(ids);
+    });
+  }, [user.id]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -348,16 +359,18 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     );
     chatSocket.on("typing", (payload: TypingDTO) => {
       if (payload.receiverId !== user.id || payload.senderId === user.id) return;
+      const sender = usersRef.current.find((item) => item.id === payload.senderId);
+      if (sender?.isBlockedByMe || sender?.hasBlockedMe) return;
 
       updateTypingStatus(payload.senderId, payload.isTyping);
     });
 
     const setOnline = (payload: OnlineUsersDTO) => {
       setUsers((current) =>
-        current.map((item) => (payload.userIds.includes(item.id) ? { ...item, online: true } : item))
+        current.map((item) => (payload.userIds.includes(item.id) && item.onlineVisibility === "everyone" ? { ...item, online: true } : item))
       );
       setSelectedUser((current) =>
-        current && payload.userIds.includes(current.id) ? { ...current, online: true } : current
+        current && payload.userIds.includes(current.id) && current.onlineVisibility === "everyone" ? { ...current, online: true } : current
       );
     };
     const setOffline = (payload: OnlineUsersDTO) => {
@@ -391,6 +404,11 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   useEffect(() => {
     const value = query.trim();
 
+    if (listMode === "contacts") {
+      void loadUsers();
+      return;
+    }
+
     if (!value) {
       void loadUsers();
       return;
@@ -408,7 +426,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     }, 220);
 
     return () => window.clearTimeout(timeout);
-  }, [query, user.id]);
+  }, [listMode, query, user.id]);
 
   async function loadUsers(silent = false) {
     if (!silent) {
@@ -417,8 +435,8 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     }
 
     try {
-      const result = await api.users(user.id);
-      const nextUsers = withSavedMessages(result.users, user);
+      const result = listMode === "contacts" ? await api.contacts(user.id) : await api.users(user.id);
+      const nextUsers = listMode === "contacts" ? result.users : withSavedMessages(result.users, user);
       setUsers(nextUsers);
       const activeUser = selectedUserRef.current;
       if (activeUser) {
@@ -543,7 +561,10 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
       selectedUserRef.current?.id === message.senderId
         ? selectedUserRef.current
         : usersRef.current.find((item) => item.id === message.senderId);
-    const soundEnabled = soundSettingsRef.current.notifications;
+    const muted = mutedUserIdsRef.current.has(message.senderId);
+    const soundEnabled = soundSettingsRef.current.notifications && !muted;
+
+    if (muted) return;
 
     const notificationShown = await window.minimalChatNotifications?.showMessage({
       title: sender?.username || "MinimalChat",
@@ -604,7 +625,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
   const sendTypingState = useCallback(
     (isTyping: boolean) => {
-      if (!selectedUser || selectedUser.isSavedMessages) return;
+      if (!selectedUser || selectedUser.isSavedMessages || selectedUser.isBlockedByMe || selectedUser.hasBlockedMe) return;
 
       socket?.emit("typing", {
         senderId: user.id,
@@ -894,18 +915,81 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     }
   }
 
-  async function updateLastSeenPrivacy(hideLastSeen: boolean) {
+  async function updatePrivacy(settings: PrivacySettingsDTO) {
     setPrivacyLoading(true);
     setError("");
 
     try {
-      const result = await api.updateLastSeenPrivacy(user.id, hideLastSeen);
+      const result = await api.updatePrivacy(user.id, settings);
       onUserUpdate({ ...result.user, online: user.online });
     } catch (caught) {
       setError(translateError(caught, t));
     } finally {
       setPrivacyLoading(false);
     }
+  }
+
+  async function changeEmail(email: string) {
+    setPrivacyLoading(true);
+    try {
+      const result = await api.updateEmail(user.id, email);
+      if (!result.confirmationRequired) {
+        onUserUpdate({ ...user, email: result.email });
+      }
+      return t.profile.emailUpdated;
+    } catch (caught) {
+      return translateError(caught, t);
+    } finally {
+      setPrivacyLoading(false);
+    }
+  }
+
+  async function changePassword(password: string) {
+    setPrivacyLoading(true);
+    try {
+      await api.updatePassword(password);
+      return t.profile.passwordUpdated;
+    } catch (caught) {
+      return translateError(caught, t);
+    } finally {
+      setPrivacyLoading(false);
+    }
+  }
+
+  async function changeSelectedContact(enabled: boolean) {
+    if (!selectedUser || selectedUser.isSavedMessages) return;
+    await api.setContact(user.id, selectedUser.id, enabled);
+    const updated = { ...selectedUser, isContact: enabled };
+    selectedUserRef.current = updated;
+    setSelectedUser(updated);
+    setUsers((current) =>
+      listMode === "contacts" && !enabled
+        ? current.filter((item) => item.id !== selectedUser.id)
+        : current.map((item) => (item.id === selectedUser.id ? { ...item, isContact: enabled } : item))
+    );
+  }
+
+  async function changeSelectedBlock(enabled: boolean) {
+    if (!selectedUser || selectedUser.isSavedMessages) return;
+    await api.setBlocked(user.id, selectedUser.id, enabled);
+    const updated = { ...selectedUser, isBlockedByMe: enabled };
+    selectedUserRef.current = updated;
+    setSelectedUser(updated);
+    setUsers((current) => current.map((item) => (item.id === selectedUser.id ? { ...item, isBlockedByMe: enabled } : item)));
+  }
+
+  async function changeChatMuted(muted: boolean) {
+    if (!selectedUser || selectedUser.isSavedMessages) return;
+    await api.setChatMuted(user.id, selectedUser.id, muted);
+    if (muted) {
+      mutedUserIdsRef.current.add(selectedUser.id);
+    } else {
+      mutedUserIdsRef.current.delete(selectedUser.id);
+    }
+    const updated = { ...selectedUser, notificationsMuted: muted };
+    selectedUserRef.current = updated;
+    setSelectedUser(updated);
+    setUsers((current) => current.map((item) => (item.id === selectedUser.id ? { ...item, notificationsMuted: muted } : item)));
   }
 
   function logout() {
@@ -939,6 +1023,10 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const selectedUserPresenceText = selectedUser
     ? selectedUser.isSavedMessages
       ? t.chat.savedMessagesHint
+      : selectedUser.isBlockedByMe
+        ? t.chat.blockedByYou
+        : selectedUser.hasBlockedMe
+          ? t.chat.blockedByThem
       : getPresenceText(selectedUser, t)
     : "";
   const selectedUserName = selectedUser?.isSavedMessages ? t.chat.savedMessages : selectedUser?.username ?? "";
@@ -991,6 +1079,11 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
         t={t}
         drafts={drafts}
         emptyMode={emptyMode}
+        mode={listMode}
+        onModeChange={(mode) => {
+          setListMode(mode);
+          setQuery("");
+        }}
         onQueryChange={setQuery}
         onSelect={selectUser}
       />
@@ -1078,8 +1171,10 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                     <ChatHistoryMenu
                       savedMessages={Boolean(selectedUser.isSavedMessages)}
                       busy={clearHistoryBusy}
+                      muted={Boolean(selectedUser.notificationsMuted)}
                       t={t}
                       onClear={clearChatHistory}
+                      onMutedChange={changeChatMuted}
                     />
                   ) : null}
                 </div>
@@ -1124,7 +1219,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
               ) : (
                 <ChatInput
                   key={selectedUser.id}
-                  disabled={!connected || messagesLoading}
+                  disabled={!connected || messagesLoading || Boolean(selectedUser.isBlockedByMe || selectedUser.hasBlockedMe)}
                   t={t}
                   initialText={drafts[selectedUser.id]?.text ?? ""}
                   replyTo={replyTarget}
@@ -1167,6 +1262,8 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
             t={t}
             onClose={() => setUserProfileOpen(false)}
             onOpenImage={setImagePreview}
+            onContactChange={changeSelectedContact}
+            onBlockChange={changeSelectedBlock}
           />
         ) : null}
       </AnimatePresence>
@@ -1189,12 +1286,16 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
             t={t}
             user={user}
             language={language}
+            theme={theme}
             soundSettings={soundSettings}
-            privacyLoading={privacyLoading}
+            busy={privacyLoading}
             onClose={() => setSettingsOpen(false)}
             onLanguageChange={onLanguageChange}
+            onThemeChange={onThemeChange}
             onSoundSettingsChange={setSoundSettings}
-            onLastSeenPrivacyChange={updateLastSeenPrivacy}
+            onPrivacyChange={updatePrivacy}
+            onEmailChange={changeEmail}
+            onPasswordChange={changePassword}
             onLogout={logout}
           />
         ) : null}

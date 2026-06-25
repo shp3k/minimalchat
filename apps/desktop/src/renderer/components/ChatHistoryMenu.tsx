@@ -1,4 +1,4 @@
-import { MoreVertical, Trash2, X } from "lucide-react";
+import { Bell, BellOff, MoreVertical, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Translation } from "@/lib/i18n";
@@ -6,11 +6,13 @@ import type { Translation } from "@/lib/i18n";
 interface ChatHistoryMenuProps {
   savedMessages: boolean;
   busy: boolean;
+  muted: boolean;
   t: Translation;
   onClear: (mode: "me" | "all") => Promise<boolean>;
+  onMutedChange: (muted: boolean) => Promise<void>;
 }
 
-export function ChatHistoryMenu({ savedMessages, busy, t, onClear }: ChatHistoryMenuProps) {
+export function ChatHistoryMenu({ savedMessages, busy, muted, t, onClear, onMutedChange }: ChatHistoryMenuProps) {
   const [open, setOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -72,6 +74,19 @@ export function ChatHistoryMenu({ savedMessages, busy, t, onClear }: ChatHistory
             transition={{ duration: 0.14 }}
             className="absolute right-0 top-full z-40 mt-2 w-52 rounded-2xl border border-borderSoft bg-panel/95 p-1 shadow-glow backdrop-blur"
           >
+            {!savedMessages ? (
+              <button
+                type="button"
+                className="flex h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-sm text-primaryText transition hover:bg-white/[0.07]"
+                onClick={async () => {
+                  await onMutedChange(!muted);
+                  setOpen(false);
+                }}
+              >
+                {muted ? <Bell size={16} /> : <BellOff size={16} />}
+                {muted ? t.chat.unmuteNotifications : t.chat.muteNotifications}
+              </button>
+            ) : null}
             <button
               type="button"
               className="flex h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-sm text-red-200 transition hover:bg-red-500/20 hover:text-red-100"

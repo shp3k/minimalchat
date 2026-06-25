@@ -5,6 +5,9 @@ const USER_KEY = "minimalchat:user";
 const LANGUAGE_KEY = "minimalchat:language";
 const SOUND_SETTINGS_KEY = "minimalchat:sound-settings";
 const DRAFTS_KEY = "minimalchat:drafts";
+const THEME_KEY = "minimalchat:theme";
+
+export type Theme = "dark" | "light";
 
 export interface ChatDraft {
   text: string;
@@ -29,7 +32,14 @@ export function getStoredUser(): UserDTO | null {
 
   try {
     const user = JSON.parse(value) as UserDTO;
-    return { ...user, bio: user.bio ?? "" };
+    return {
+      ...user,
+      bio: user.bio ?? "",
+      onlineVisibility: user.onlineVisibility ?? "everyone",
+      avatarVisibility: user.avatarVisibility ?? "everyone",
+      emailVisibility: user.emailVisibility ?? "nobody",
+      lastSeenVisibility: user.lastSeenVisibility ?? (user.hideLastSeen ? "nobody" : "everyone")
+    };
   } catch {
     localStorage.removeItem(USER_KEY);
     return null;
@@ -51,6 +61,14 @@ export function getStoredLanguage(): Language {
 
 export function storeLanguage(language: Language) {
   localStorage.setItem(LANGUAGE_KEY, language);
+}
+
+export function getStoredTheme(): Theme {
+  return localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
+}
+
+export function storeTheme(theme: Theme) {
+  localStorage.setItem(THEME_KEY, theme);
 }
 
 export function getStoredSoundSettings(): SoundSettings {

@@ -1,5 +1,5 @@
 import type { MessageDTO, UserListItemDTO } from "@minimalchat/shared";
-import { Bookmark, Search } from "lucide-react";
+import { BellOff, Bookmark, Search, ShieldBan } from "lucide-react";
 import { motion } from "motion/react";
 import { Avatar } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,8 @@ interface UserListProps {
   t: Translation;
   drafts: ChatDrafts;
   emptyMode: "conversations" | "hint" | "search";
+  mode: "chats" | "contacts";
+  onModeChange: (mode: "chats" | "contacts") => void;
   onQueryChange: (value: string) => void;
   onSelect: (user: UserListItemDTO) => void;
 }
@@ -26,9 +28,15 @@ function preview(message: MessageDTO | null | undefined, t: Translation) {
   return message.text.length > 46 ? `${message.text.slice(0, 46)}...` : message.text;
 }
 
-export function UserList({ users, selectedUserId, loading, query, t, drafts, emptyMode, onQueryChange, onSelect }: UserListProps) {
+export function UserList({ users, selectedUserId, loading, query, t, drafts, emptyMode, mode, onModeChange, onQueryChange, onSelect }: UserListProps) {
   const emptyText =
-    emptyMode === "hint" ? t.chat.searchHint : emptyMode === "search" ? t.chat.noSearchResults : t.chat.noUsers;
+    mode === "contacts"
+      ? t.chat.noContacts
+      : emptyMode === "hint"
+        ? t.chat.searchHint
+        : emptyMode === "search"
+          ? t.chat.noSearchResults
+          : t.chat.noUsers;
 
   return (
     <section className="flex w-[330px] shrink-0 flex-col border-r border-borderSoft bg-panel">
@@ -37,13 +45,29 @@ export function UserList({ users, selectedUserId, loading, query, t, drafts, emp
           <p className="text-xs uppercase tracking-[0.16em] text-secondaryText">{t.chat.messages}</p>
           <h1 className="mt-1 text-2xl font-semibold text-primaryText">{t.chat.inbox}</h1>
         </div>
+        <div className="mb-3 grid grid-cols-2 rounded-xl bg-background p-1">
+          {(["chats", "contacts"] as const).map((item) => (
+            <button
+              key={item}
+              type="button"
+              className={cn(
+                "h-9 rounded-lg text-sm font-semibold transition",
+                mode === item ? "bg-panel2 text-primaryText shadow-sm" : "text-secondaryText hover:text-primaryText"
+              )}
+              onClick={() => onModeChange(item)}
+            >
+              {item === "chats" ? t.chat.chats : t.chat.contacts}
+            </button>
+          ))}
+        </div>
         <div className="relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-secondaryText" size={17} />
           <Input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder={t.chat.searchUsers}
+            placeholder={mode === "contacts" ? t.chat.contacts : t.chat.searchUsers}
             className="pl-11"
+            disabled={mode === "contacts"}
           />
         </div>
       </div>
@@ -52,7 +76,13 @@ export function UserList({ users, selectedUserId, loading, query, t, drafts, emp
         {loading ? (
           <div className="space-y-3 p-2">
             {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="h-[76px] animate-pulse rounded-3xl bg-white/[0.04]" />
+              <div key={index} className="flex h-[76px] items-center gap-3 rounded-2xl px-3">
+                <div className="skeleton h-12 w-12 shrink-0 rounded-full" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="skeleton h-3 w-2/5 rounded-full" />
+                  <div className="skeleton h-2.5 w-4/5 rounded-full" />
+                </div>
+              </div>
             ))}
           </div>
         ) : users.length === 0 ? (
@@ -117,9 +147,13 @@ function UserCard({
       )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-3">
-          <p className={cn("truncate text-sm font-semibold", hasUnread ? "text-white" : "text-primaryText")}>
-            {displayName}
-          </p>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p className={cn("truncate text-sm font-semibold", hasUnread ? "text-white" : "text-primaryText")}>
+              {displayName}
+            </p>
+            {user.isBlockedByMe ? <ShieldBan size={13} className="shrink-0 text-red-400" /> : null}
+            {user.notificationsMuted ? <BellOff size={13} className="shrink-0 text-secondaryText" /> : null}
+          </div>
           {draft || user.lastMessage ? (
             <span className={cn("shrink-0 text-[11px]", hasUnread ? "font-semibold text-accent" : "text-secondaryText")}>
               {formatMessageTime(draft?.updatedAt ?? user.lastMessage?.sentAt ?? "")}

@@ -11,6 +11,10 @@ export function toUserDTO(user: User, online = false): UserDTO {
     bio: user.bio,
     lastSeenAt: user.lastSeenAt ? user.lastSeenAt.toISOString() : null,
     hideLastSeen: user.hideLastSeen,
+    onlineVisibility: user.onlineVisibility as "everyone" | "nobody",
+    avatarVisibility: user.avatarVisibility as "everyone" | "nobody",
+    emailVisibility: user.emailVisibility as "everyone" | "nobody",
+    lastSeenVisibility: user.lastSeenVisibility as "everyone" | "nobody",
     createdAt: user.createdAt.toISOString(),
     online
   };

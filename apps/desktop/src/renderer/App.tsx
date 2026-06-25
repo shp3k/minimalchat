@@ -4,7 +4,7 @@ import { TopBar } from "@/components/TopBar";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { api } from "@/lib/api";
 import type { Language } from "@/lib/i18n";
-import { clearStoredUser, getStoredLanguage, storeLanguage, storeUser } from "@/lib/storage";
+import { clearStoredUser, getStoredLanguage, getStoredTheme, storeLanguage, storeTheme, storeUser, type Theme } from "@/lib/storage";
 import { getStoredUser } from "@/lib/storage";
 import { AuthPage } from "@/pages/AuthPage";
 import { ChatPage } from "@/pages/ChatPage";
@@ -14,6 +14,7 @@ export function App() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [language, setLanguage] = useState<Language>(() => getStoredLanguage());
+  const [theme, setTheme] = useState<Theme>(() => getStoredTheme());
 
   useEffect(() => {
     let cancelled = false;
@@ -49,7 +50,7 @@ export function App() {
   }, []);
 
   return (
-    <div className="flex h-screen min-h-[600px] min-w-[900px] flex-col overflow-hidden bg-background text-primaryText">
+    <div className={`${theme} flex h-screen min-h-[600px] min-w-[900px] flex-col overflow-hidden bg-background text-primaryText`}>
       <TopBar />
       <UpdateBanner language={language} />
       {checkingSession ? (
@@ -60,6 +61,7 @@ export function App() {
         <ChatPage
           user={user}
           language={language}
+          theme={theme}
           onUserUpdate={(nextUser) => {
             storeUser(nextUser);
             setUser(nextUser);
@@ -67,6 +69,10 @@ export function App() {
           onLanguageChange={(nextLanguage) => {
             storeLanguage(nextLanguage);
             setLanguage(nextLanguage);
+          }}
+          onThemeChange={(nextTheme) => {
+            storeTheme(nextTheme);
+            setTheme(nextTheme);
           }}
           onLogout={() => setUser(null)}
         />
