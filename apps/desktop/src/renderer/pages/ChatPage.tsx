@@ -105,7 +105,19 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
     return messages.filter((message) => message.text.toLocaleLowerCase().includes(value));
   }, [chatSearchQuery, messages]);
   const activeSearchMessageId = searchResults[activeSearchIndex]?.id ?? null;
-  const displayedUsers = useMemo(() => sortConversationUsersWithDrafts(users, drafts), [drafts, users]);
+  const displayedUsers = useMemo(() => {
+    const sorted = sortConversationUsersWithDrafts(users, drafts);
+    if (listMode !== "contacts") return sorted;
+
+    const value = query.trim().replace(/^@/, "").toLocaleLowerCase();
+    if (!value) return sorted;
+
+    return sorted.filter((item) => {
+      const username = item.username.toLocaleLowerCase();
+      const handle = item.handle?.toLocaleLowerCase() ?? "";
+      return username.includes(value) || handle.includes(value);
+    });
+  }, [drafts, listMode, query, users]);
   const totalUnreadCount = useMemo(
     () => users.reduce((sum, item) => sum + Math.max(0, item.unreadCount), 0),
     [users]
@@ -405,7 +417,6 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
     const value = query.trim();
 
     if (listMode === "contacts") {
-      void loadUsers();
       return;
     }
 

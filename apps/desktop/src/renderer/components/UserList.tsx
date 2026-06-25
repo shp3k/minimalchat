@@ -65,9 +65,8 @@ export function UserList({ users, selectedUserId, loading, query, t, drafts, emp
           <Input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder={mode === "contacts" ? t.chat.contacts : t.chat.searchUsers}
+            placeholder={mode === "contacts" ? `${t.chat.contacts}...` : t.chat.searchUsers}
             className="pl-11"
-            disabled={mode === "contacts"}
           />
         </div>
       </div>

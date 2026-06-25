@@ -30,20 +30,46 @@ await trayIcon.clone().resize(32, 32, { fit: "contain" }).png().toFile(path.join
 await trayIcon.clone().resize(64, 64, { fit: "contain" }).png().toFile(path.join(buildDir, "tray@2x.png"));
 
 async function prepareSquare(source, paddingRatio) {
-  const trimmedBuffer = await sharp(source)
+  const sourceImage = sharp(source).ensureAlpha();
+  const { data, info } = await sourceImage.raw().toBuffer({ resolveWithObject: true });
+
+  for (let index = 0; index < data.length; index += 4) {
+    if (data[index + 3] <= 16) {
+      data[index] = 0;
+      data[index + 1] = 0;
+      data[index + 2] = 0;
+      data[index + 3] = 0;
+    }
+  }
+
+  const cleanedBuffer = await sharp(data, {
+    raw: {
+      width: info.width,
+      height: info.height,
+      channels: 4
+    }
+  })
+    .png()
+    .toBuffer();
+  const trimmedBuffer = await sharp(cleanedBuffer)
     .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 12 })
     .png()
     .toBuffer();
   const metadata = await sharp(trimmedBuffer).metadata();
-  const edge = Math.max(metadata.width ?? 1, metadata.height ?? 1);
-  const padding = Math.max(1, Math.round(edge * paddingRatio));
+  const width = metadata.width ?? 1;
+  const height = metadata.height ?? 1;
+  const contentEdge = Math.max(width, height);
+  const padding = Math.max(1, Math.round(contentEdge * paddingRatio));
+  const canvasEdge = contentEdge + padding * 2;
+  const horizontalSpace = canvasEdge - width;
+  const verticalSpace = canvasEdge - height;
 
   const paddedBuffer = await sharp(trimmedBuffer)
     .extend({
-      top: padding,
-      bottom: padding,
-      left: padding,
-      right: padding,
+      top: Math.floor(verticalSpace / 2),
+      bottom: Math.ceil(verticalSpace / 2),
+      left: Math.floor(horizontalSpace / 2),
+      right: Math.ceil(horizontalSpace / 2),
       background: { r: 0, g: 0, b: 0, alpha: 0 }
     })
     .png()
