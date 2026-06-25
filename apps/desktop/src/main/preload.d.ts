@@ -27,6 +27,17 @@ declare global {
       writeText: (value: string) => Promise<void>;
       writeImage: (url: string) => Promise<{ ok: boolean; code?: string }>;
     };
+    minimalChatLinkPreview?: {
+      fetch: (url: string) => Promise<{
+        ok: boolean;
+        code?: string;
+        url?: string;
+        title?: string;
+        description?: string;
+        siteName?: string;
+        imageDataUrl?: string | null;
+      }>;
+    };
     minimalChatNotifications?: {
       showMessage: (payload: {
         title: string;

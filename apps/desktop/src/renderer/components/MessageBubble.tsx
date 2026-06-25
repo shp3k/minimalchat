@@ -74,6 +74,7 @@ export function MessageBubble({
   const attachmentUrl = getAttachmentUrl(message.attachmentUrl);
   const hasAttachment = Boolean(attachmentUrl);
   const copyMode = getCopyMode(message, attachmentUrl);
+  const firstLink = extractUrls(message.text)[0] ?? null;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.text);
   const [busy, setBusy] = useState(false);
@@ -267,9 +268,10 @@ export function MessageBubble({
           </div>
         ) : message.text ? (
           <p className={cn("whitespace-pre-wrap break-words text-sm leading-5", attachmentUrl ? "mt-2.5" : "")}>
-            <HighlightedText text={message.text} query={searchQuery} mine={mine} />
+            <RichMessageText text={message.text} query={searchQuery} mine={mine} />
           </p>
         ) : null}
+        {firstLink && !editing ? <LinkPreviewCard url={firstLink} mine={mine} /> : null}
         <div
           className={cn(
             "mt-1.5 flex items-center gap-1 text-[11px] leading-none",
@@ -311,6 +313,38 @@ export function MessageBubble({
   );
 }
 
+function RichMessageText({ text, query, mine }: { text: string; query: string; mine: boolean }) {
+  const urlPattern = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
+  const parts = text.split(urlPattern);
+
+  return parts.map((part, index) => {
+    if (!part) return null;
+    if (/^(?:https?:\/\/|www\.)/i.test(part)) {
+      const { url, trailing } = normalizeDetectedUrl(part);
+      return (
+        <span key={`${index}-${part}`}>
+          <button
+            type="button"
+            className={cn(
+              "cursor-pointer underline decoration-1 underline-offset-2 transition hover:opacity-80",
+              mine ? "text-white" : "text-violet-300"
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              void openExternalUrl(url);
+            }}
+          >
+            <HighlightedText text={part.slice(0, part.length - trailing.length)} query={query} mine={mine} />
+          </button>
+          {trailing}
+        </span>
+      );
+    }
+
+    return <HighlightedText key={`${index}-${part}`} text={part} query={query} mine={mine} />;
+  });
+}
+
 function HighlightedText({ text, query, mine }: { text: string; query: string; mine: boolean }) {
   const value = query.trim();
   if (!value) return text;
@@ -331,6 +365,78 @@ function HighlightedText({ text, query, mine }: { text: string; query: string; m
       part
     )
   );
+}
+
+function LinkPreviewCard({ url, mine }: { url: string; mine: boolean }) {
+  const [preview, setPreview] = useState<{
+    ok: boolean;
+    url?: string;
+    title?: string;
+    description?: string;
+    siteName?: string;
+    imageDataUrl?: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void window.minimalChatLinkPreview?.fetch(url).then((result) => {
+      if (!cancelled) setPreview(result);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  if (!preview?.ok) return null;
+
+  return (
+    <button
+      type="button"
+      className={cn(
+        "mt-2.5 block w-[360px] max-w-full overflow-hidden rounded-xl border text-left transition hover:brightness-110",
+        mine ? "border-white/18 bg-white/[0.10]" : "border-borderSoft bg-background/55"
+      )}
+      onClick={(event) => {
+        event.stopPropagation();
+        void openExternalUrl(preview.url || url);
+      }}
+    >
+      {preview.imageDataUrl ? (
+        <img src={preview.imageDataUrl} alt="" className="h-36 w-full object-cover" />
+      ) : null}
+      <span className="block px-3 py-2.5">
+        <span className={cn("flex items-center gap-1.5 text-[11px] font-semibold", mine ? "text-white/70" : "text-accent")}>
+          <ExternalLink size={12} />
+          {preview.siteName || new URL(preview.url || url).hostname}
+        </span>
+        {preview.title ? <span className="mt-1 block line-clamp-2 text-sm font-semibold leading-5">{preview.title}</span> : null}
+        {preview.description ? (
+          <span className={cn("mt-1 block line-clamp-2 text-xs leading-4", mine ? "text-white/68" : "text-secondaryText")}>
+            {preview.description}
+          </span>
+        ) : null}
+      </span>
+    </button>
+  );
+}
+
+function extractUrls(text: string) {
+  return Array.from(text.matchAll(/(?:https?:\/\/[^\s<]+|www\.[^\s<]+)/gi))
+    .map((match) => normalizeDetectedUrl(match[0]).url)
+    .filter(Boolean);
+}
+
+function normalizeDetectedUrl(value: string) {
+  const trailingMatch = value.match(/[),.!?:;]+$/);
+  const trailing = trailingMatch?.[0] ?? "";
+  const cleanValue = trailing ? value.slice(0, -trailing.length) : value;
+
+  return {
+    url: /^https?:\/\//i.test(cleanValue) ? cleanValue : `https://${cleanValue}`,
+    trailing
+  };
 }
 
 function escapeRegExp(value: string) {

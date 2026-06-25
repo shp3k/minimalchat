@@ -19,6 +19,10 @@ contextBridge.exposeInMainWorld("minimalChatClipboard", {
   writeImage: (url) => ipcRenderer.invoke("clipboard:write-image", url)
 });
 
+contextBridge.exposeInMainWorld("minimalChatLinkPreview", {
+  fetch: (url) => ipcRenderer.invoke("link-preview:fetch", url)
+});
+
 contextBridge.exposeInMainWorld("minimalChatNotifications", {
   showMessage: (payload) => ipcRenderer.invoke("notification:show-message", payload),
   onMessageClick: (callback) => {

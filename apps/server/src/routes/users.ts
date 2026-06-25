@@ -11,7 +11,8 @@ const router = Router();
 const profileSchema = z.object({
   username: z.string().trim().min(2, "Username must contain at least 2 characters").max(32),
   handle: z.string().trim().min(3).max(25),
-  avatarUrl: z.string().nullable().optional()
+  avatarUrl: z.string().nullable().optional(),
+  bio: z.string().trim().max(160).default("")
 });
 
 const MAX_AVATAR_LENGTH = 1_500_000;
@@ -71,7 +72,8 @@ router.patch("/me", async (req, res, next) => {
       data: {
         username: data.username,
         handle,
-        avatarUrl: data.avatarUrl ?? null
+        avatarUrl: data.avatarUrl ?? null,
+        bio: data.bio
       }
     });
 

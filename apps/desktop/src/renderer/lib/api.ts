@@ -64,6 +64,7 @@ type UserRow = {
   email: string;
   handle: string | null;
   avatarUrl: string | null;
+  bio: string | null;
   lastSeenAt: string | null;
   hideLastSeen: boolean;
   createdAt: string;
@@ -105,6 +106,7 @@ export function toUserDTO(row: UserRow, online = false): UserDTO {
     email: row.email,
     handle: row.handle,
     avatarUrl: row.avatarUrl,
+    bio: row.bio ?? "",
     lastSeenAt: row.lastSeenAt ? toUtcIsoString(row.lastSeenAt) : null,
     hideLastSeen: row.hideLastSeen ?? false,
     createdAt: toUtcIsoString(row.createdAt),
@@ -394,7 +396,8 @@ export const api = {
       .update({
         username: payload.username.trim(),
         handle,
-        avatarUrl: payload.avatarUrl ?? null
+        avatarUrl: payload.avatarUrl ?? null,
+        bio: payload.bio?.trim() ?? ""
       })
       .eq("id", currentUserId)
       .select("*")

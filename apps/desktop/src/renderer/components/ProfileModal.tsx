@@ -15,13 +15,14 @@ interface ProfileModalProps {
   error: string;
   onClose: () => void;
   onOpenSettings: () => void;
-  onSave: (data: { username: string; handle: string; avatarUrl: string | null }) => Promise<void>;
+  onSave: (data: { username: string; handle: string; avatarUrl: string | null; bio: string }) => Promise<void>;
 }
 
 export function ProfileModal({ user, t, loading, error, onClose, onOpenSettings, onSave }: ProfileModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [username, setUsername] = useState(user.username);
   const [handle, setHandle] = useState(user.handle ?? "");
+  const [bio, setBio] = useState(user.bio ?? "");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user.avatarUrl);
   const [avatarError, setAvatarError] = useState("");
   const [cropSource, setCropSource] = useState("");
@@ -46,7 +47,7 @@ export function ProfileModal({ user, t, loading, error, onClose, onOpenSettings,
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!canSave) return;
-    await onSave({ username: username.trim(), handle: normalizedHandle, avatarUrl });
+    await onSave({ username: username.trim(), handle: normalizedHandle, avatarUrl, bio: bio.trim() });
   }
 
   function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
@@ -138,7 +139,7 @@ export function ProfileModal({ user, t, loading, error, onClose, onOpenSettings,
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 10, scale: 0.98 }}
         onSubmit={submit}
-        className="w-full max-w-[420px] rounded-[28px] border border-borderSoft bg-panel p-6 shadow-glow"
+        className="max-h-[calc(100%-32px)] w-full max-w-[420px] overflow-y-auto rounded-[28px] border border-borderSoft bg-panel p-6 shadow-glow"
       >
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -272,6 +273,19 @@ export function ProfileModal({ user, t, loading, error, onClose, onOpenSettings,
                 <Copy size={15} />
               </button>
             </div>
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-medium text-secondaryText">{t.profile.bio}</span>
+            <textarea
+              value={bio}
+              onChange={(event) => setBio(event.target.value)}
+              maxLength={160}
+              rows={3}
+              placeholder={t.profile.bioPlaceholder}
+              className="min-h-24 w-full resize-none rounded-2xl border border-borderSoft bg-background px-4 py-3 text-sm leading-5 text-primaryText outline-none transition placeholder:text-secondaryText focus:border-accent/60 focus:ring-2 focus:ring-accent/15"
+            />
+            <p className="mt-1.5 text-right text-[11px] text-secondaryText">{bio.length}/160</p>
           </label>
 
           <label className="block">

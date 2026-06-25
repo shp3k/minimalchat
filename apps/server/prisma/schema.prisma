@@ -14,6 +14,7 @@ model User {
   email        String    @unique
   handle       String?   @unique
   avatarUrl    String?
+  bio          String    @default("")
   lastSeenAt   DateTime?
   hideLastSeen Boolean   @default(false)
   passwordHash String

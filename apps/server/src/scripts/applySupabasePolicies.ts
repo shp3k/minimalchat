@@ -12,6 +12,7 @@ const statements = [
   `alter table public."Message" add column if not exists "isForwarded" boolean not null default false`,
   `alter table public."User" add column if not exists "lastSeenAt" timestamp(3)`,
   `alter table public."User" add column if not exists "hideLastSeen" boolean not null default false`,
+  `alter table public."User" add column if not exists bio text not null default ''`,
   `create index if not exists "Message_replyToMessageId_idx" on public."Message" ("replyToMessageId")`,
   `alter table public."User" enable row level security`,
   `alter table public."Message" enable row level security`,

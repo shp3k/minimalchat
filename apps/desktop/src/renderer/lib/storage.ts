@@ -28,7 +28,8 @@ export function getStoredUser(): UserDTO | null {
   if (!value) return null;
 
   try {
-    return JSON.parse(value) as UserDTO;
+    const user = JSON.parse(value) as UserDTO;
+    return { ...user, bio: user.bio ?? "" };
   } catch {
     localStorage.removeItem(USER_KEY);
     return null;

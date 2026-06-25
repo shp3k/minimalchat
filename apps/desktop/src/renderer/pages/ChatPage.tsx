@@ -15,6 +15,7 @@ import { ProfileModal } from "@/components/ProfileModal";
 import { SettingsModal } from "@/components/SettingsModal";
 import { Sidebar } from "@/components/Sidebar";
 import { UserList } from "@/components/UserList";
+import { UserProfileModal } from "@/components/UserProfileModal";
 import { Avatar } from "@/components/ui/avatar";
 import { api } from "@/lib/api";
 import type { Language } from "@/lib/i18n";
@@ -49,6 +50,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
   const [usersLoading, setUsersLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [userProfileOpen, setUserProfileOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [imagePreview, setImagePreview] = useState<{ url: string; name: string } | null>(null);
   const [replyTarget, setReplyTarget] = useState<MessageDTO | null>(null);
@@ -210,6 +212,12 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
         return;
       }
 
+      if (userProfileOpen) {
+        event.preventDefault();
+        setUserProfileOpen(false);
+        return;
+      }
+
       if (selectedMessageIds.length) {
         event.preventDefault();
         setSelectedMessageIds([]);
@@ -226,7 +234,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
 
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [chatSearchOpen, forwardTarget, imagePreview, profileOpen, replyTarget, selectedMessageIds.length, selectedUser, settingsOpen]);
+  }, [chatSearchOpen, forwardTarget, imagePreview, profileOpen, replyTarget, selectedMessageIds.length, selectedUser, settingsOpen, userProfileOpen]);
 
   useEffect(() => {
     if (!forwardTarget) {
@@ -682,7 +690,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
     }
   }
 
-  async function updateProfile(data: { username: string; handle: string; avatarUrl: string | null }) {
+  async function updateProfile(data: { username: string; handle: string; avatarUrl: string | null; bio: string }) {
     setProfileLoading(true);
     setProfileError("");
 
@@ -1007,7 +1015,17 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
               className="flex min-h-0 flex-1 flex-col"
             >
               <header className="flex h-[82px] shrink-0 items-center justify-between border-b border-borderSoft bg-background/80 px-7">
-                <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  className="flex min-w-0 items-center gap-4 rounded-2xl p-1 text-left transition hover:bg-white/[0.04]"
+                  onClick={() => {
+                    if (selectedUser.isSavedMessages) {
+                      setProfileOpen(true);
+                    } else {
+                      setUserProfileOpen(true);
+                    }
+                  }}
+                >
                   {selectedUser.isSavedMessages ? (
                     <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-accent text-white shadow-accent">
                       <Bookmark size={20} fill="currentColor" />
@@ -1043,7 +1061,7 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
                       )}
                     </AnimatePresence>
                   </div>
-                </div>
+                </button>
                 <div className="flex items-center gap-1">
                   <ChatSearch
                     open={chatSearchOpen}
@@ -1137,6 +1155,18 @@ export function ChatPage({ user, language, onUserUpdate, onLanguageChange, onLog
               setForwardTargets([]);
               setForwardQuery("");
             }}
+          />
+        ) : null}
+      </AnimatePresence>
+      <AnimatePresence>
+        {userProfileOpen && selectedUser && !selectedUser.isSavedMessages ? (
+          <UserProfileModal
+            user={selectedUser}
+            messages={messages}
+            language={language}
+            t={t}
+            onClose={() => setUserProfileOpen(false)}
+            onOpenImage={setImagePreview}
           />
         ) : null}
       </AnimatePresence>

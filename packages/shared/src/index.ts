@@ -4,6 +4,7 @@ export interface UserDTO {
   email: string;
   handle: string | null;
   avatarUrl: string | null;
+  bio: string;
   lastSeenAt: string | null;
   hideLastSeen: boolean;
   createdAt: string;
@@ -70,6 +71,7 @@ export interface UpdateProfileDTO {
   username: string;
   handle: string;
   avatarUrl?: string | null;
+  bio?: string;
 }
 
 export interface ApiErrorDTO {
