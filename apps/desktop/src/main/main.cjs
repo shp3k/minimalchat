@@ -177,8 +177,10 @@ async function fetchLinkPreview(value) {
     const response = await fetchSafePublicResource(value, {
       signal: AbortSignal.timeout(7000),
       headers: {
-        "User-Agent": "Mozilla/5.0 MinimalChat/1.0",
-        Accept: "text/html,application/xhtml+xml"
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8"
       }
     });
 
@@ -209,7 +211,9 @@ async function fetchLinkPreview(value) {
       imageDataUrl
     };
 
-    linkPreviewCache.set(value, { result, expiresAt: Date.now() + 30 * 60 * 1000 });
+    if (result.ok) {
+      linkPreviewCache.set(value, { result, expiresAt: Date.now() + 30 * 60 * 1000 });
+    }
     return result;
   } catch {
     return { ok: false, code: "PREVIEW_UNAVAILABLE" };
@@ -238,18 +242,32 @@ async function fetchPreviewImage(url) {
 }
 
 function getMetaContent(html, names) {
-  for (const name of names) {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const patterns = [
-      new RegExp(`<meta[^>]+(?:property|name)=["']${escaped}["'][^>]+content=["']([^"']*)["'][^>]*>`, "i"),
-      new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${escaped}["'][^>]*>`, "i")
-    ];
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match?.[1]) return decodeHtmlEntities(match[1]);
+  const wantedNames = new Set(names.map((name) => name.toLowerCase()));
+  const metaTags = html.match(/<meta\b[^>]*>/gi) ?? [];
+
+  for (const tag of metaTags) {
+    const attributes = parseHtmlAttributes(tag);
+    const metaName = String(attributes.property ?? attributes.name ?? "").toLowerCase();
+    if (wantedNames.has(metaName) && attributes.content) {
+      return decodeHtmlEntities(attributes.content);
     }
   }
+
   return "";
+}
+
+function parseHtmlAttributes(tag) {
+  const attributes = {};
+  const expression = /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  let match;
+
+  while ((match = expression.exec(tag))) {
+    const name = match[1].toLowerCase();
+    if (name === "meta") continue;
+    attributes[name] = match[2] ?? match[3] ?? match[4] ?? "";
+  }
+
+  return attributes;
 }
 
 function getTitle(html) {

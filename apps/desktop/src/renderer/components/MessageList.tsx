@@ -270,61 +270,66 @@ export function MessageList({
         </motion.div>
       ) : (
         <div className="flex min-h-full flex-col justify-end gap-2.5">
-          {messages.map((message) => {
+          {messages.map((message, index) => {
             const replyToMessage = message.replyToMessageId
               ? messages.find((item) => item.id === message.replyToMessageId) ?? null
               : null;
+            const previousMessage = index > 0 ? messages[index - 1] : null;
+            const showDateSeparator =
+              !previousMessage || getLocalDateKey(previousMessage.sentAt) !== getLocalDateKey(message.sentAt);
 
             return (
-              <div
-                key={message.id}
-                onMouseDown={(event) => startDragSelection(message.id, event)}
-                onMouseEnter={() => continueDragSelection(message.id)}
-                onClick={(event) => handleMessageClick(message.id, event)}
-                ref={(element) => {
-                  if (element) {
-                    messageRefs.current.set(message.id, element);
-                  } else {
-                    messageRefs.current.delete(message.id);
-                  }
-                }}
-                className={cn(
-                  "rounded-2xl px-2 py-0.5 transition-colors",
-                  selectedMessageIds.includes(message.id) && "bg-accent/10",
-                  selectedMessageIds.length > 0 && "cursor-pointer"
-                )}
-              >
-                <MessageBubble
-                  message={message}
-                  currentUserId={currentUserId}
-                  mine={message.senderId === currentUserId}
-                  savedMessages={savedMessages}
-                  selected={selectedMessageIds.includes(message.id)}
-                  searchQuery={searchQuery}
-                  highlighted={highlightedId === message.id || activeSearchMessageId === message.id}
-                  popupType={activePopup?.messageId === message.id ? activePopup.type : null}
-                  popupPlacement={activePopup?.messageId === message.id ? activePopup.placement : "top"}
-                  t={t}
-                  replyToMessage={replyToMessage}
-                  replyToAuthorName={replyToMessage ? getMessageAuthorName(replyToMessage, currentUserId, currentUserName, otherUserName) : ""}
-                  onEdit={onEditMessage}
-                  onDelete={onDeleteMessage}
-                  onPin={onPinMessage}
-                  onToggleReaction={onToggleReaction}
-                  onForward={onForwardMessage}
-                  onReply={onReplyMessage}
-                  onSelect={(selectedMessage) => selectMessage(selectedMessage.id)}
-                  onOpenReply={scrollToMessage}
-                  onOpenImage={onOpenImage}
-                  onPopupChange={(type) => {
-                    if (!type) {
-                      setActivePopup(null);
-                      return;
+              <div key={message.id}>
+                {showDateSeparator ? <DateSeparator value={message.sentAt} t={t} /> : null}
+                <div
+                  onMouseDown={(event) => startDragSelection(message.id, event)}
+                  onMouseEnter={() => continueDragSelection(message.id)}
+                  onClick={(event) => handleMessageClick(message.id, event)}
+                  ref={(element) => {
+                    if (element) {
+                      messageRefs.current.set(message.id, element);
+                    } else {
+                      messageRefs.current.delete(message.id);
                     }
-
-                    openPopup(message.id, type);
                   }}
-                />
+                  className={cn(
+                    "rounded-2xl px-2 py-0.5 transition-colors",
+                    selectedMessageIds.includes(message.id) && "bg-accent/10",
+                    selectedMessageIds.length > 0 && "cursor-pointer"
+                  )}
+                >
+                  <MessageBubble
+                    message={message}
+                    currentUserId={currentUserId}
+                    mine={message.senderId === currentUserId}
+                    savedMessages={savedMessages}
+                    selected={selectedMessageIds.includes(message.id)}
+                    searchQuery={searchQuery}
+                    highlighted={highlightedId === message.id || activeSearchMessageId === message.id}
+                    popupType={activePopup?.messageId === message.id ? activePopup.type : null}
+                    popupPlacement={activePopup?.messageId === message.id ? activePopup.placement : "top"}
+                    t={t}
+                    replyToMessage={replyToMessage}
+                    replyToAuthorName={replyToMessage ? getMessageAuthorName(replyToMessage, currentUserId, currentUserName, otherUserName) : ""}
+                    onEdit={onEditMessage}
+                    onDelete={onDeleteMessage}
+                    onPin={onPinMessage}
+                    onToggleReaction={onToggleReaction}
+                    onForward={onForwardMessage}
+                    onReply={onReplyMessage}
+                    onSelect={(selectedMessage) => selectMessage(selectedMessage.id)}
+                    onOpenReply={scrollToMessage}
+                    onOpenImage={onOpenImage}
+                    onPopupChange={(type) => {
+                      if (!type) {
+                        setActivePopup(null);
+                        return;
+                      }
+
+                      openPopup(message.id, type);
+                    }}
+                  />
+                </div>
               </div>
             );
           })}
@@ -338,6 +343,48 @@ export function MessageList({
 
 function getMessageAuthorName(message: MessageDTO, currentUserId: string, currentUserName: string, otherUserName: string) {
   return message.senderId === currentUserId ? currentUserName : otherUserName;
+}
+
+function DateSeparator({ value, t }: { value: string; t: Translation }) {
+  return (
+    <div className="my-3 flex items-center gap-3 px-2" aria-label={formatChatDate(value, t)}>
+      <span className="h-px flex-1 bg-borderSoft" />
+      <span className="rounded-full border border-borderSoft bg-panel/90 px-3 py-1 text-[11px] font-medium text-secondaryText shadow-sm">
+        {formatChatDate(value, t)}
+      </span>
+      <span className="h-px flex-1 bg-borderSoft" />
+    </div>
+  );
+}
+
+function formatChatDate(value: string, t: Translation) {
+  const date = new Date(value);
+  const today = startOfLocalDay(new Date());
+  const messageDay = startOfLocalDay(date);
+  const daysAgo =
+    (Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) -
+      Date.UTC(messageDay.getFullYear(), messageDay.getMonth(), messageDay.getDate())) /
+    86_400_000;
+
+  if (daysAgo === 0) return t.chat.today;
+  if (daysAgo === 1) return t.chat.yesterday;
+
+  const sameYear = date.getFullYear() === today.getFullYear();
+  const locale = t.chat.today === "Сегодня" ? "ru-RU" : "en-US";
+  return new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "long",
+    ...(sameYear ? {} : { year: "numeric" })
+  }).format(date);
+}
+
+function getLocalDateKey(value: string) {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function startOfLocalDay(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
 }
 
 function isInteractiveTarget(target: EventTarget | null) {

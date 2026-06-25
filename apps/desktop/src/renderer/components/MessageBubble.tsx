@@ -376,18 +376,46 @@ function LinkPreviewCard({ url, mine }: { url: string; mine: boolean }) {
     siteName?: string;
     imageDataUrl?: string | null;
   } | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
-    void window.minimalChatLinkPreview?.fetch(url).then((result) => {
-      if (!cancelled) setPreview(result);
-    });
+    async function loadPreview() {
+      setLoading(true);
+      setPreview(null);
+
+      try {
+        const result = await window.minimalChatLinkPreview?.fetch(url);
+        if (!cancelled && result) setPreview(result);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadPreview();
 
     return () => {
       cancelled = true;
     };
   }, [url]);
+
+  if (loading) {
+    return (
+      <div
+        className={cn(
+          "mt-2.5 w-[360px] max-w-full overflow-hidden rounded-xl border",
+          mine ? "border-white/18 bg-white/[0.08]" : "border-borderSoft bg-background/55"
+        )}
+      >
+        <div className="h-24 animate-pulse bg-white/[0.05]" />
+        <div className="space-y-2 px-3 py-3">
+          <div className="h-2.5 w-20 animate-pulse rounded-full bg-white/[0.08]" />
+          <div className="h-3 w-3/4 animate-pulse rounded-full bg-white/[0.08]" />
+        </div>
+      </div>
+    );
+  }
 
   if (!preview?.ok) return null;
 
@@ -409,7 +437,7 @@ function LinkPreviewCard({ url, mine }: { url: string; mine: boolean }) {
       <span className="block px-3 py-2.5">
         <span className={cn("flex items-center gap-1.5 text-[11px] font-semibold", mine ? "text-white/70" : "text-accent")}>
           <ExternalLink size={12} />
-          {preview.siteName || new URL(preview.url || url).hostname}
+          {preview.siteName || getUrlHostname(preview.url || url)}
         </span>
         {preview.title ? <span className="mt-1 block line-clamp-2 text-sm font-semibold leading-5">{preview.title}</span> : null}
         {preview.description ? (
@@ -420,6 +448,14 @@ function LinkPreviewCard({ url, mine }: { url: string; mine: boolean }) {
       </span>
     </button>
   );
+}
+
+function getUrlHostname(value: string) {
+  try {
+    return new URL(value).hostname.replace(/^www\./, "");
+  } catch {
+    return value;
+  }
 }
 
 function extractUrls(text: string) {
