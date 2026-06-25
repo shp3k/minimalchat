@@ -1,5 +1,5 @@
-import type { MessageDTO, UserListItemDTO } from "@minimalchat/shared";
-import { BellOff, Bookmark, Search, ShieldBan } from "lucide-react";
+import type { MessageDTO, SpaceDTO, UserListItemDTO } from "@minimalchat/shared";
+import { BellOff, Bookmark, Plus, Radio, Search, ShieldBan, Users } from "lucide-react";
 import { motion } from "motion/react";
 import { Avatar } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
@@ -10,14 +10,18 @@ import { cn, formatMessageTime } from "@/lib/utils";
 
 interface UserListProps {
   users: UserListItemDTO[];
+  spaces: SpaceDTO[];
   selectedUserId?: string;
+  selectedSpaceId?: string;
   loading: boolean;
   query: string;
   t: Translation;
   drafts: ChatDrafts;
   emptyMode: "conversations" | "hint" | "search";
-  mode: "chats" | "contacts";
-  onModeChange: (mode: "chats" | "contacts") => void;
+  mode: "chats" | "contacts" | "groups" | "channels";
+  onModeChange: (mode: "chats" | "contacts" | "groups" | "channels") => void;
+  onCreateSpace: () => void;
+  onSelectSpace: (space: SpaceDTO) => void;
   onQueryChange: (value: string) => void;
   onSelect: (user: UserListItemDTO) => void;
 }
@@ -28,10 +32,14 @@ function preview(message: MessageDTO | null | undefined, t: Translation) {
   return message.text.length > 46 ? `${message.text.slice(0, 46)}...` : message.text;
 }
 
-export function UserList({ users, selectedUserId, loading, query, t, drafts, emptyMode, mode, onModeChange, onQueryChange, onSelect }: UserListProps) {
+export function UserList({ users, spaces, selectedUserId, selectedSpaceId, loading, query, t, drafts, emptyMode, mode, onModeChange, onCreateSpace, onQueryChange, onSelect, onSelectSpace }: UserListProps) {
   const emptyText =
     mode === "contacts"
       ? t.chat.noContacts
+      : mode === "groups"
+        ? t.chat.noGroups
+        : mode === "channels"
+          ? t.chat.noChannels
       : emptyMode === "hint"
         ? t.chat.searchHint
         : emptyMode === "search"
@@ -45,8 +53,8 @@ export function UserList({ users, selectedUserId, loading, query, t, drafts, emp
           <p className="text-xs uppercase tracking-[0.16em] text-secondaryText">{t.chat.messages}</p>
           <h1 className="mt-1 text-2xl font-semibold text-primaryText">{t.chat.inbox}</h1>
         </div>
-        <div className="mb-3 grid grid-cols-2 rounded-xl bg-background p-1">
-          {(["chats", "contacts"] as const).map((item) => (
+        <div className="mb-3 grid grid-cols-4 rounded-xl bg-background p-1">
+          {(["chats", "contacts", "groups", "channels"] as const).map((item) => (
             <button
               key={item}
               type="button"
@@ -56,16 +64,22 @@ export function UserList({ users, selectedUserId, loading, query, t, drafts, emp
               )}
               onClick={() => onModeChange(item)}
             >
-              {item === "chats" ? t.chat.chats : t.chat.contacts}
+              <span className="text-[11px]">{item === "chats" ? t.chat.chats : item === "contacts" ? t.chat.contacts : item === "groups" ? t.chat.groups : t.chat.channels}</span>
             </button>
           ))}
         </div>
+        {mode === "groups" || mode === "channels" ? (
+          <button type="button" className="mb-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-accent/25 bg-accent/10 text-sm font-semibold text-accent transition hover:bg-accent/15" onClick={onCreateSpace}>
+            <Plus size={16} />
+            {mode === "groups" ? t.chat.createGroup : t.chat.createChannel}
+          </button>
+        ) : null}
         <div className="relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-secondaryText" size={17} />
           <Input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder={mode === "contacts" ? `${t.chat.contacts}...` : t.chat.searchUsers}
+            placeholder={mode === "contacts" ? `${t.chat.contacts}...` : mode === "groups" ? `${t.chat.groups}...` : mode === "channels" ? `${t.chat.channels}...` : t.chat.searchUsers}
             className="pl-11"
           />
         </div>
@@ -84,7 +98,16 @@ export function UserList({ users, selectedUserId, loading, query, t, drafts, emp
               </div>
             ))}
           </div>
-        ) : users.length === 0 ? (
+        ) : (mode === "groups" || mode === "channels") && spaces.length ? (
+          <div className="space-y-2">
+            {spaces.map((space) => (
+              <button key={space.id} type="button" className={cn("flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition", selectedSpaceId === space.id ? "border-accent/40 bg-accent/12" : "border-transparent hover:border-borderSoft hover:bg-background")} onClick={() => onSelectSpace(space)}>
+                {space.avatarUrl ? <img src={space.avatarUrl} alt="" className="h-12 w-12 rounded-full object-cover" /> : <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-accent text-white">{space.type === "group" ? <Users size={20} /> : <Radio size={20} />}</div>}
+                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-primaryText">{space.title}</span><span className="mt-1 block truncate text-xs text-secondaryText">{space.lastMessage?.text || `${space.memberCount} ${t.chat.participants.toLowerCase()}`}</span></span>
+              </button>
+            ))}
+          </div>
+        ) : ((mode === "groups" || mode === "channels") ? spaces.length === 0 : users.length === 0) ? (
           <div className="px-4 py-12 text-center text-sm leading-6 text-secondaryText">
             {emptyText}
           </div>

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MessageDTO, OnlineUsersDTO, PrivacySettingsDTO, TypingDTO, UserDTO, UserListItemDTO } from "@minimalchat/shared";
+import type { MessageDTO, OnlineUsersDTO, PrivacySettingsDTO, SpaceDTO, SpaceMemberDTO, SpaceMessageDTO, TypingDTO, UserDTO, UserListItemDTO } from "@minimalchat/shared";
 import { Bookmark } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { ChatInput } from "@/components/ChatInput";
+import { CreateSpaceModal } from "@/components/CreateSpaceModal";
 import { ChatHistoryMenu } from "@/components/ChatHistoryMenu";
 import { ChatSearch } from "@/components/ChatSearch";
 import { EmptyChatState } from "@/components/EmptyChatState";
@@ -13,6 +14,7 @@ import { MessageList } from "@/components/MessageList";
 import { copyMessageContent, getAttachmentUrl, getCopyMode } from "@/components/MessageBubble";
 import { ProfileModal } from "@/components/ProfileModal";
 import { SettingsModal } from "@/components/SettingsModal";
+import { SpaceChat } from "@/components/SpaceChat";
 import { Sidebar } from "@/components/Sidebar";
 import { UserList } from "@/components/UserList";
 import { UserProfileModal } from "@/components/UserProfileModal";
@@ -50,7 +52,15 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
   const [selectedUser, setSelectedUser] = useState<UserListItemDTO | null>(null);
   const [messages, setMessages] = useState<MessageDTO[]>([]);
   const [query, setQuery] = useState("");
-  const [listMode, setListMode] = useState<"chats" | "contacts">("chats");
+  const [listMode, setListMode] = useState<"chats" | "contacts" | "groups" | "channels">("chats");
+  const [spaces, setSpaces] = useState<SpaceDTO[]>([]);
+  const [selectedSpace, setSelectedSpace] = useState<SpaceDTO | null>(null);
+  const [spaceMessages, setSpaceMessages] = useState<SpaceMessageDTO[]>([]);
+  const [spaceMembers, setSpaceMembers] = useState<SpaceMemberDTO[]>([]);
+  const [spaceLoading, setSpaceLoading] = useState(false);
+  const [createSpaceOpen, setCreateSpaceOpen] = useState(false);
+  const [createSpaceBusy, setCreateSpaceBusy] = useState(false);
+  const [spaceContacts, setSpaceContacts] = useState<UserListItemDTO[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -80,6 +90,8 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState("");
   const selectedUserRef = useRef<UserListItemDTO | null>(null);
+  const selectedSpaceRef = useRef<SpaceDTO | null>(null);
+  const listModeRef = useRef(listMode);
   const usersRef = useRef<UserListItemDTO[]>([]);
   const typingTimersRef = useRef<Record<string, number>>({});
   const usersRefreshTimerRef = useRef<number | null>(null);
@@ -118,10 +130,21 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
       return username.includes(value) || handle.includes(value);
     });
   }, [drafts, listMode, query, users]);
+  const displayedSpaces = useMemo(() => {
+    const value = query.trim().replace(/^@/, "").toLocaleLowerCase();
+    if (!value) return spaces;
+    return spaces.filter((space) => space.title.toLocaleLowerCase().includes(value) || space.handle?.toLocaleLowerCase().includes(value));
+  }, [query, spaces]);
   const totalUnreadCount = useMemo(
     () => users.reduce((sum, item) => sum + Math.max(0, item.unreadCount), 0),
     [users]
   );
+
+  useEffect(() => {
+    if (listMode === "groups" || listMode === "channels") {
+      void loadSpaces(listMode === "groups" ? "group" : "channel");
+    }
+  }, [listMode, user.id]);
 
   useEffect(() => {
     void api.mutedChatIds(user.id).then((ids) => {
@@ -140,6 +163,14 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
   useEffect(() => {
     selectedUserRef.current = selectedUser;
   }, [selectedUser]);
+
+  useEffect(() => {
+    selectedSpaceRef.current = selectedSpace;
+  }, [selectedSpace]);
+
+  useEffect(() => {
+    listModeRef.current = listMode;
+  }, [listMode]);
 
   useEffect(() => {
     soundSettingsRef.current = soundSettings;
@@ -252,12 +283,20 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
         selectedUserRef.current = null;
         setSelectedUser(null);
         setMessages([]);
+        return;
+      }
+
+      if (selectedSpace) {
+        event.preventDefault();
+        setSelectedSpace(null);
+        selectedSpaceRef.current = null;
+        setSpaceMessages([]);
       }
     }
 
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [chatSearchOpen, forwardTarget, imagePreview, profileOpen, replyTarget, selectedMessageIds.length, selectedUser, settingsOpen, userProfileOpen]);
+  }, [chatSearchOpen, forwardTarget, imagePreview, profileOpen, replyTarget, selectedMessageIds.length, selectedSpace, selectedUser, settingsOpen, userProfileOpen]);
 
   useEffect(() => {
     if (!forwardTarget) {
@@ -406,6 +445,40 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
         current?.id === updatedUser.id ? { ...current, ...updatedUser, online: current.online } : current
       );
     });
+    chatSocket.on("space-message:receive", (payload: { spaceId?: string; senderId?: string; text?: string }) => {
+      if (!payload.spaceId) return;
+      if (selectedSpaceRef.current?.id === payload.spaceId) {
+        void loadSelectedSpace(payload.spaceId, false);
+      }
+      if (payload.senderId !== user.id && user.handle && payload.text?.toLowerCase().includes(`@${user.handle.toLowerCase()}`)) {
+        void window.minimalChatNotifications?.showMessage({
+          title: t.chat.mentionNotification,
+          body: payload.text.slice(0, 180),
+          senderId: payload.senderId ?? "",
+          force: true,
+          silent: !soundSettingsRef.current.notifications
+        });
+      }
+      if (listModeRef.current === "groups" || listModeRef.current === "channels") {
+        void loadSpaces(listModeRef.current === "groups" ? "group" : "channel");
+      }
+    });
+    chatSocket.on("space-message:delete", (payload: { id?: string }) => {
+      if (payload.id) setSpaceMessages((current) => current.filter((item) => item.id !== payload.id));
+    });
+    chatSocket.on("space:changed", () => {
+      if (listModeRef.current === "groups" || listModeRef.current === "channels") {
+        void loadSpaces(listModeRef.current === "groups" ? "group" : "channel");
+      }
+      if (selectedSpaceRef.current) {
+        void loadSelectedSpace(selectedSpaceRef.current.id, false);
+      }
+    });
+    chatSocket.on("space:updated", () => {
+      if (listModeRef.current === "groups" || listModeRef.current === "channels") {
+        void loadSpaces(listModeRef.current === "groups" ? "group" : "channel");
+      }
+    });
 
     return () => {
       chatSocket.emit("user:disconnect");
@@ -413,8 +486,132 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
     };
   }, [user.id]);
 
+  async function loadSpaces(type: "group" | "channel") {
+    try {
+      const result = await api.spaces(user.id, type);
+      setSpaces(result.spaces);
+    } catch (caught) {
+      setError(translateError(caught, t));
+    }
+  }
+
+  async function selectSpace(space: SpaceDTO) {
+    setSelectedUser(null);
+    selectedUserRef.current = null;
+    setMessages([]);
+    setSelectedSpace(space);
+    void api.contacts(user.id).then((result) => setSpaceContacts(result.users));
+    await loadSelectedSpace(space.id, true);
+  }
+
+  async function loadSelectedSpace(spaceId: string, showLoading: boolean) {
+    if (showLoading) setSpaceLoading(true);
+    try {
+      const [messageResult, memberResult] = await Promise.all([api.spaceMessages(spaceId), api.spaceMembers(spaceId)]);
+      setSpaceMessages(messageResult.messages);
+      setSpaceMembers(memberResult.members);
+    } catch (caught) {
+      setError(translateError(caught, t));
+    } finally {
+      if (showLoading) setSpaceLoading(false);
+    }
+  }
+
+  async function createSpace(data: { title: string; handle: string; avatarUrl: string | null; description: string; commentsEnabled: boolean; memberIds: string[] }) {
+    setCreateSpaceBusy(true);
+    try {
+      const type = listMode === "channels" ? "channel" : "group";
+      const result = await api.createSpace({ ownerId: user.id, type, ...data });
+      setSpaces((current) => [result.space, ...current]);
+      setCreateSpaceOpen(false);
+      await selectSpace(result.space);
+    } catch (caught) {
+      setError(translateError(caught, t));
+    } finally {
+      setCreateSpaceBusy(false);
+    }
+  }
+
+  async function openCreateSpace() {
+    try {
+      const result = await api.contacts(user.id);
+      setSpaceContacts(result.users);
+      setCreateSpaceOpen(true);
+    } catch (caught) {
+      setError(translateError(caught, t));
+    }
+  }
+
+  async function sendSpaceMessage(text: string, kind: "message" | "post" | "comment", parentPostId?: string | null) {
+    if (!selectedSpace) return;
+    const result = await api.sendSpaceMessage({ spaceId: selectedSpace.id, senderId: user.id, text, kind, parentPostId });
+    setSpaceMessages((current) => current.some((item) => item.id === result.message.id) ? current : [...current, result.message]);
+  }
+
+  async function deleteSpaceMessage(message: SpaceMessageDTO) {
+    await api.deleteSpaceMessage(message.id);
+    setSpaceMessages((current) => current.filter((item) => item.id !== message.id));
+  }
+
+  async function updateSelectedSpace(data: { title: string; avatarUrl: string | null; description: string; commentsEnabled: boolean }) {
+    if (!selectedSpace) return;
+    await api.updateSpace(selectedSpace.id, data);
+    const updated = { ...selectedSpace, ...data };
+    setSelectedSpace(updated);
+    setSpaces((current) => current.map((item) => item.id === updated.id ? updated : item));
+  }
+
+  async function changeSpaceRole(userId: string, role: "admin" | "member") {
+    if (!selectedSpace) return;
+    await api.updateSpaceMemberRole(selectedSpace.id, userId, role);
+    await loadSelectedSpace(selectedSpace.id, false);
+  }
+
+  async function removeSpaceMember(userId: string) {
+    if (!selectedSpace) return;
+    await api.removeSpaceMember(selectedSpace.id, userId);
+    await loadSelectedSpace(selectedSpace.id, false);
+  }
+
+  async function addSpaceMember(userId: string) {
+    if (!selectedSpace) return;
+    await api.addSpaceMember(selectedSpace.id, userId);
+    await loadSelectedSpace(selectedSpace.id, false);
+    setSelectedSpace((current) => current ? { ...current, memberCount: current.memberCount + 1 } : current);
+  }
+
+  async function subscribeSelectedSpace() {
+    if (!selectedSpace) return;
+    await api.subscribeSpace(selectedSpace.id, user.id);
+    const updated = { ...selectedSpace, subscribed: true, memberCount: selectedSpace.memberCount + 1 };
+    setSelectedSpace(updated);
+    setSpaces((current) => current.map((item) => item.id === updated.id ? updated : item));
+    await loadSelectedSpace(updated.id, true);
+  }
+
   useEffect(() => {
     const value = query.trim();
+
+    if (listMode === "groups") {
+      return;
+    }
+
+    if (listMode === "channels") {
+      if (!value) {
+        void loadSpaces("channel");
+        return;
+      }
+      if (value.startsWith("@")) {
+        const timeout = window.setTimeout(() => {
+          void api.findChannel(user.id, value)
+            .then((result) => setSpaces(result.spaces))
+            .catch((caught) => setError(translateError(caught, t)));
+        }, 220);
+        return () => window.clearTimeout(timeout);
+      }
+      setSpaces([]);
+      return;
+    }
 
     if (listMode === "contacts") {
       return;
@@ -527,6 +724,9 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
     if (selectedUserRef.current?.id === nextUser.id) return;
 
     const activeUser = { ...nextUser, unreadCount: 0 };
+    setSelectedSpace(null);
+    selectedSpaceRef.current = null;
+    setSpaceMessages([]);
     selectedUserRef.current = activeUser;
     setSelectedUser(activeUser);
     setUsers((current) => current.map((item) => (item.id === nextUser.id ? { ...item, unreadCount: 0 } : item)));
@@ -1084,7 +1284,9 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
       <Sidebar user={user} unreadCount={totalUnreadCount} onProfileOpen={() => setProfileOpen(true)} />
       <UserList
         users={displayedUsers}
+        spaces={displayedSpaces}
         selectedUserId={selectedUser?.id}
+        selectedSpaceId={selectedSpace?.id}
         loading={usersLoading}
         query={query}
         t={t}
@@ -1094,9 +1296,15 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
         onModeChange={(mode) => {
           setListMode(mode);
           setQuery("");
+          setSelectedUser(null);
+          selectedUserRef.current = null;
+          setSelectedSpace(null);
+          selectedSpaceRef.current = null;
         }}
+        onCreateSpace={() => void openCreateSpace()}
         onQueryChange={setQuery}
         onSelect={selectUser}
+        onSelectSpace={(space) => void selectSpace(space)}
       />
       <section className="flex min-w-0 flex-1 flex-col bg-background">
         {error ? (
@@ -1105,7 +1313,26 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
           </div>
         ) : null}
         <AnimatePresence mode="wait">
-          {!selectedUser ? (
+          {selectedSpace ? (
+            <motion.div key={selectedSpace.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex min-h-0 flex-1">
+              <SpaceChat
+                space={selectedSpace}
+                currentUser={user}
+                messages={spaceMessages}
+                members={spaceMembers}
+                contacts={spaceContacts}
+                loading={spaceLoading}
+                t={t}
+                onSend={sendSpaceMessage}
+                onDelete={deleteSpaceMessage}
+                onUpdateSpace={updateSelectedSpace}
+                onRoleChange={changeSpaceRole}
+                onRemoveMember={removeSpaceMember}
+                onAddMember={addSpaceMember}
+                onSubscribe={subscribeSelectedSpace}
+              />
+            </motion.div>
+          ) : !selectedUser ? (
             <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-0 flex-1">
               <EmptyChatState t={t} />
             </motion.div>
@@ -1245,6 +1472,18 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
           )}
         </AnimatePresence>
       </section>
+      <AnimatePresence>
+        {createSpaceOpen ? (
+          <CreateSpaceModal
+            type={listMode === "channels" ? "channel" : "group"}
+            contacts={spaceContacts}
+            t={t}
+            busy={createSpaceBusy}
+            onClose={() => setCreateSpaceOpen(false)}
+            onCreate={createSpace}
+          />
+        ) : null}
+      </AnimatePresence>
       <AnimatePresence>
         {forwardTarget ? (
           <ForwardMessageModal

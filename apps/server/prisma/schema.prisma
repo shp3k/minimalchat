@@ -32,6 +32,9 @@ model User {
   blocksReceived UserBlock[] @relation("Blocked")
   chatPreferences ChatPreference[] @relation("PreferenceOwner")
   chatPreferencesFor ChatPreference[] @relation("PreferenceTarget")
+  spacesCreated Space[] @relation("SpaceOwner")
+  spaceMemberships SpaceMember[]
+  spaceMessages SpaceMessage[]
 }
 
 model Message {
@@ -113,4 +116,52 @@ model ChatPreference {
 
   @@unique([ownerId, targetId])
   @@index([ownerId])
+}
+
+model Space {
+  id              String   @id @default(cuid())
+  type            String
+  title           String
+  handle          String?  @unique
+  avatarUrl       String?
+  description     String   @default("")
+  commentsEnabled Boolean  @default(false)
+  ownerId         String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  owner           User     @relation("SpaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members         SpaceMember[]
+  messages        SpaceMessage[]
+
+  @@index([ownerId])
+  @@index([type])
+}
+
+model SpaceMember {
+  id        String   @id @default(cuid())
+  spaceId   String
+  userId    String
+  role      String   @default("member")
+  joinedAt  DateTime @default(now())
+  space     Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([spaceId, userId])
+  @@index([userId])
+}
+
+model SpaceMessage {
+  id           String   @id @default(cuid())
+  spaceId      String
+  senderId     String
+  text         String
+  kind         String   @default("message")
+  parentPostId String?
+  sentAt       DateTime @default(now())
+  editedAt     DateTime?
+  space        Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  sender       User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([spaceId, sentAt])
+  @@index([parentPostId])
 }

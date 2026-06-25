@@ -6,6 +6,11 @@ import type {
   PrivacySettingsDTO,
   RegisterDTO,
   SendMessageDTO,
+  SpaceDTO,
+  SpaceMemberDTO,
+  SpaceMessageDTO,
+  SpaceRole,
+  SpaceType,
   UpdateProfileDTO,
   UserDTO,
   UserListItemDTO
@@ -117,6 +122,38 @@ type ChatPreferenceRow = {
   muted: boolean;
 };
 
+type SpaceRow = {
+  id: string;
+  type: SpaceType;
+  title: string;
+  handle: string | null;
+  avatarUrl: string | null;
+  description: string;
+  commentsEnabled: boolean;
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type SpaceMemberRow = {
+  id: string;
+  spaceId: string;
+  userId: string;
+  role: SpaceRole;
+  joinedAt: string;
+};
+
+type SpaceMessageRow = {
+  id: string;
+  spaceId: string;
+  senderId: string;
+  text: string;
+  kind: "message" | "post" | "comment";
+  parentPostId: string | null;
+  sentAt: string;
+  editedAt: string | null;
+};
+
 export type MessageReactionRow = {
   id: string;
   messageId: string;
@@ -190,6 +227,58 @@ export function toMessageReactionDTO(row: MessageReactionRow): MessageReactionDT
     userId: String(row.userId ?? ""),
     emoji: String(row.emoji ?? ""),
     createdAt: row.createdAt ? toUtcIsoString(row.createdAt) : new Date(0).toISOString()
+  };
+}
+
+function toSpaceMessageDTO(row: SpaceMessageRow, sender?: UserRow | null): SpaceMessageDTO {
+  return {
+    id: row.id,
+    spaceId: row.spaceId,
+    senderId: row.senderId,
+    senderName: sender?.username ?? "MinimalChat",
+    senderHandle: sender?.handle ?? null,
+    senderAvatarUrl: sender?.avatarUrl ?? null,
+    text: row.text,
+    kind: row.kind,
+    parentPostId: row.parentPostId,
+    sentAt: toUtcIsoString(row.sentAt),
+    editedAt: row.editedAt ? toUtcIsoString(row.editedAt) : null
+  };
+}
+
+async function hydrateSpaceMessages(rows: SpaceMessageRow[]) {
+  const senderIds = Array.from(new Set(rows.map((item) => item.senderId)));
+  const users = senderIds.length
+    ? await supabase.from("User").select("*").in("id", senderIds).returns<UserRow[]>()
+    : { data: [], error: null };
+  if (users.error) throw new ApiRequestError(users.error.message, users.error.code);
+  const byId = new Map((users.data ?? []).map((item) => [item.id, item]));
+  return rows.map((row) => toSpaceMessageDTO(row, byId.get(row.senderId)));
+}
+
+async function toSpaceDTO(row: SpaceRow, currentUserId: string): Promise<SpaceDTO> {
+  const [membership, memberCount, lastMessage] = await Promise.all([
+    supabase.from("SpaceMember").select("*").eq("spaceId", row.id).eq("userId", currentUserId).maybeSingle<SpaceMemberRow>(),
+    supabase.from("SpaceMember").select("id", { count: "exact", head: true }).eq("spaceId", row.id),
+    supabase.from("SpaceMessage").select("*").eq("spaceId", row.id).order("sentAt", { ascending: false }).limit(1).maybeSingle<SpaceMessageRow>()
+  ]);
+  const error = membership.error ?? memberCount.error ?? lastMessage.error;
+  if (error) throw new ApiRequestError(error.message, error.code);
+  const hydrated = lastMessage.data ? await hydrateSpaceMessages([lastMessage.data]) : [];
+  return {
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    handle: row.handle,
+    avatarUrl: row.avatarUrl,
+    description: row.description ?? "",
+    commentsEnabled: row.commentsEnabled,
+    ownerId: row.ownerId,
+    createdAt: toUtcIsoString(row.createdAt),
+    role: membership.data?.role ?? "member",
+    subscribed: Boolean(membership.data),
+    memberCount: memberCount.count ?? 0,
+    lastMessage: hydrated[0] ?? null
   };
 }
 
@@ -601,6 +690,150 @@ export const api = {
       .returns<Array<{ targetId: string }>>();
     if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
     return (result.data ?? []).map((item) => item.targetId);
+  },
+
+  async spaces(currentUserId: string, type?: SpaceType): Promise<{ spaces: SpaceDTO[] }> {
+    const memberships = await supabase.from("SpaceMember").select("spaceId").eq("userId", currentUserId).returns<Array<{ spaceId: string }>>();
+    if (memberships.error) throw new ApiRequestError(memberships.error.message, memberships.error.code);
+    const ids = (memberships.data ?? []).map((item) => item.spaceId);
+    if (!ids.length) return { spaces: [] };
+    let query = supabase.from("Space").select("*").in("id", ids);
+    if (type) query = query.eq("type", type);
+    const result = await query.order("updatedAt", { ascending: false }).returns<SpaceRow[]>();
+    if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+    return { spaces: await Promise.all((result.data ?? []).map((row) => toSpaceDTO(row, currentUserId))) };
+  },
+
+  async findChannel(currentUserId: string, handle: string): Promise<{ spaces: SpaceDTO[] }> {
+    const normalized = normalizeHandle(handle);
+    if (!normalized) return { spaces: [] };
+    const result = await supabase.from("Space").select("*").eq("type", "channel").eq("handle", normalized).limit(1).returns<SpaceRow[]>();
+    if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+    return { spaces: await Promise.all((result.data ?? []).map((row) => toSpaceDTO(row, currentUserId))) };
+  },
+
+  async subscribeSpace(spaceId: string, userId: string) {
+    await this.addSpaceMember(spaceId, userId);
+  },
+
+  async createSpace(payload: {
+    ownerId: string;
+    type: SpaceType;
+    title: string;
+    handle?: string;
+    avatarUrl?: string | null;
+    description?: string;
+    commentsEnabled?: boolean;
+    memberIds: string[];
+  }): Promise<{ space: SpaceDTO }> {
+    const id = crypto.randomUUID();
+    const space = {
+      id,
+      type: payload.type,
+      title: payload.title.trim(),
+      handle: payload.handle ? normalizeHandle(payload.handle) : null,
+      avatarUrl: payload.avatarUrl ?? null,
+      description: payload.description?.trim() ?? "",
+      commentsEnabled: payload.type === "channel" && Boolean(payload.commentsEnabled),
+      ownerId: payload.ownerId
+    };
+    const created = await supabase.from("Space").insert(space);
+    if (created.error) throw new ApiRequestError(created.error.message, created.error.code);
+    const ownerMember = await supabase.from("SpaceMember").insert({
+      id: crypto.randomUUID(),
+      spaceId: id,
+      userId: payload.ownerId,
+      role: "owner"
+    });
+    if (ownerMember.error) throw new ApiRequestError(ownerMember.error.message, ownerMember.error.code);
+    const otherIds = Array.from(new Set(payload.memberIds.filter((userId) => userId !== payload.ownerId)));
+    if (otherIds.length) {
+      const members = await supabase.from("SpaceMember").insert(otherIds.map((userId) => ({
+        id: crypto.randomUUID(),
+        spaceId: id,
+        userId,
+        role: "member"
+      })));
+      if (members.error) throw new ApiRequestError(members.error.message, members.error.code);
+    }
+    const result = await supabase.from("Space").select("*").eq("id", id).single<SpaceRow>();
+    if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+    return { space: await toSpaceDTO(result.data, payload.ownerId) };
+  },
+
+  async spaceMembers(spaceId: string): Promise<{ members: SpaceMemberDTO[] }> {
+    const memberships = await supabase.from("SpaceMember").select("*").eq("spaceId", spaceId).order("joinedAt").returns<SpaceMemberRow[]>();
+    if (memberships.error) throw new ApiRequestError(memberships.error.message, memberships.error.code);
+    const ids = (memberships.data ?? []).map((item) => item.userId);
+    const users = ids.length ? await supabase.from("User").select("*").in("id", ids).returns<UserRow[]>() : { data: [], error: null };
+    if (users.error) throw new ApiRequestError(users.error.message, users.error.code);
+    const byId = new Map((users.data ?? []).map((item) => [item.id, item]));
+    return {
+      members: (memberships.data ?? []).map((item) => ({
+        id: item.id,
+        userId: item.userId,
+        role: item.role,
+        joinedAt: toUtcIsoString(item.joinedAt),
+        user: toUserDTO(byId.get(item.userId) as UserRow)
+      }))
+    };
+  },
+
+  async addSpaceMember(spaceId: string, userId: string) {
+    const result = await supabase.from("SpaceMember").upsert(
+      { id: crypto.randomUUID(), spaceId, userId, role: "member" },
+      { onConflict: "spaceId,userId", ignoreDuplicates: true }
+    );
+    if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+  },
+
+  async updateSpaceMemberRole(spaceId: string, userId: string, role: SpaceRole) {
+    const result = await supabase.from("SpaceMember").update({ role }).eq("spaceId", spaceId).eq("userId", userId);
+    if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+  },
+
+  async removeSpaceMember(spaceId: string, userId: string) {
+    const result = await supabase.from("SpaceMember").delete().eq("spaceId", spaceId).eq("userId", userId);
+    if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+  },
+
+  async updateSpace(spaceId: string, payload: { title: string; avatarUrl: string | null; description: string; commentsEnabled: boolean }) {
+    const result = await supabase.from("Space").update(payload).eq("id", spaceId).select("*").single<SpaceRow>();
+    if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+    return result.data;
+  },
+
+  async spaceMessages(spaceId: string): Promise<{ messages: SpaceMessageDTO[] }> {
+    const result = await supabase.from("SpaceMessage").select("*").eq("spaceId", spaceId).order("sentAt").returns<SpaceMessageRow[]>();
+    if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+    return { messages: await hydrateSpaceMessages(result.data ?? []) };
+  },
+
+  async sendSpaceMessage(payload: { spaceId: string; senderId: string; text: string; kind: "message" | "post" | "comment"; parentPostId?: string | null }) {
+    const result = await supabase.from("SpaceMessage").insert({
+      id: crypto.randomUUID(),
+      spaceId: payload.spaceId,
+      senderId: payload.senderId,
+      text: payload.text.trim(),
+      kind: payload.kind,
+      parentPostId: payload.parentPostId ?? null
+    }).select("*").single<SpaceMessageRow>();
+    if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+    const [message] = await hydrateSpaceMessages([result.data]);
+    return { message };
+  },
+
+  async deleteSpaceMessage(messageId: string) {
+    const result = await supabase.from("SpaceMessage").delete().eq("id", messageId);
+    if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+  },
+
+  async mentionedUsers(text: string) {
+    const handles = Array.from(new Set(Array.from(text.matchAll(/@([a-z0-9_]{3,24})/gi)).map((match) => match[1].toLowerCase())));
+    if (!handles.length) return [] as UserDTO[];
+    const result = await supabase.from("User").select("*").in("handle", handles).returns<UserRow[]>();
+    if (result.error) throw new ApiRequestError(result.error.message, result.error.code);
+    return (result.data ?? []).map((row) => toUserDTO(row));
   },
 
   async updateEmail(currentUserId: string, email: string) {

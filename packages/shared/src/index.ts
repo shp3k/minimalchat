@@ -105,3 +105,45 @@ export interface TypingDTO {
   receiverId: string;
   isTyping: boolean;
 }
+
+export type SpaceType = "group" | "channel";
+export type SpaceRole = "owner" | "admin" | "member";
+export type SpaceMessageKind = "message" | "post" | "comment";
+
+export interface SpaceMemberDTO {
+  id: string;
+  userId: string;
+  role: SpaceRole;
+  joinedAt: string;
+  user: UserDTO;
+}
+
+export interface SpaceMessageDTO {
+  id: string;
+  spaceId: string;
+  senderId: string;
+  senderName: string;
+  senderHandle: string | null;
+  senderAvatarUrl: string | null;
+  text: string;
+  kind: SpaceMessageKind;
+  parentPostId: string | null;
+  sentAt: string;
+  editedAt: string | null;
+}
+
+export interface SpaceDTO {
+  id: string;
+  type: SpaceType;
+  title: string;
+  handle: string | null;
+  avatarUrl: string | null;
+  description: string;
+  commentsEnabled: boolean;
+  ownerId: string;
+  createdAt: string;
+  role: SpaceRole;
+  subscribed: boolean;
+  memberCount: number;
+  lastMessage: SpaceMessageDTO | null;
+}

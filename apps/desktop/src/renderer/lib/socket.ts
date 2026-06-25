@@ -61,6 +61,18 @@ export class SupabaseChatSocket {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "User" }, (payload) => {
         this.emitLocal("user:update", toVisibleUserDTO(payload.new as any, this.userId));
       })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "SpaceMessage" }, (payload) => {
+        this.emitLocal("space-message:receive", payload.new);
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "SpaceMessage" }, (payload) => {
+        this.emitLocal("space-message:delete", payload.old);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "SpaceMember" }, (payload) => {
+        this.emitLocal("space:changed", payload);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "Space" }, (payload) => {
+        this.emitLocal("space:updated", payload.new);
+      })
       .on("broadcast", { event: "typing" }, (payload) => {
         const typing = payload.payload as TypingDTO;
 
