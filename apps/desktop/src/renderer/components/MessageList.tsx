@@ -270,18 +270,17 @@ export function MessageList({
         </motion.div>
       ) : (
         <div className="flex min-h-full flex-col justify-end gap-2.5">
-          {messages.map((message, index) => {
-            const replyToMessage = message.replyToMessageId
-              ? messages.find((item) => item.id === message.replyToMessageId) ?? null
-              : null;
-            const previousMessage = index > 0 ? messages[index - 1] : null;
-            const showDateSeparator =
-              !previousMessage || getLocalDateKey(previousMessage.sentAt) !== getLocalDateKey(message.sentAt);
+          {groupMessagesByDate(messages).map((group) => (
+            <div key={group.dateKey} className="flex flex-col gap-2.5">
+              <DateSeparator value={group.messages[0].sentAt} t={t} />
+              {group.messages.map((message) => {
+                const replyToMessage = message.replyToMessageId
+                  ? messages.find((item) => item.id === message.replyToMessageId) ?? null
+                  : null;
 
-            return (
-              <div key={message.id}>
-                {showDateSeparator ? <DateSeparator value={message.sentAt} t={t} /> : null}
+                return (
                 <div
+                  key={message.id}
                   onMouseDown={(event) => startDragSelection(message.id, event)}
                   onMouseEnter={() => continueDragSelection(message.id)}
                   onClick={(event) => handleMessageClick(message.id, event)}
@@ -330,9 +329,10 @@ export function MessageList({
                     }}
                   />
                 </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          ))}
           <div ref={endRef} />
         </div>
       )}
@@ -346,13 +346,13 @@ function getMessageAuthorName(message: MessageDTO, currentUserId: string, curren
 }
 
 function DateSeparator({ value, t }: { value: string; t: Translation }) {
+  const label = formatChatDate(value, t);
+
   return (
-    <div className="my-3 flex items-center gap-3 px-2" aria-label={formatChatDate(value, t)}>
-      <span className="h-px flex-1 bg-borderSoft" />
-      <span className="rounded-full border border-borderSoft bg-panel/90 px-3 py-1 text-[11px] font-medium text-secondaryText shadow-sm">
-        {formatChatDate(value, t)}
+    <div className="sticky top-2 z-20 my-3 flex justify-center px-2 pointer-events-none" aria-label={label}>
+      <span className="rounded-full border border-white/[0.09] bg-zinc-900/90 px-3 py-1 text-[11px] font-medium text-zinc-300 shadow-lg shadow-black/25 backdrop-blur-md">
+        {label}
       </span>
-      <span className="h-px flex-1 bg-borderSoft" />
     </div>
   );
 }
@@ -381,6 +381,21 @@ function formatChatDate(value: string, t: Translation) {
 function getLocalDateKey(value: string) {
   const date = new Date(value);
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function groupMessagesByDate(messages: MessageDTO[]) {
+  return messages.reduce<Array<{ dateKey: string; messages: MessageDTO[] }>>((groups, message) => {
+    const dateKey = getLocalDateKey(message.sentAt);
+    const currentGroup = groups[groups.length - 1];
+
+    if (currentGroup?.dateKey === dateKey) {
+      currentGroup.messages.push(message);
+    } else {
+      groups.push({ dateKey, messages: [message] });
+    }
+
+    return groups;
+  }, []);
 }
 
 function startOfLocalDay(value: Date) {
