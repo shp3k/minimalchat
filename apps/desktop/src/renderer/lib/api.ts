@@ -727,6 +727,7 @@ export const api = {
     memberIds: string[];
   }): Promise<{ space: SpaceDTO }> {
     const id = crypto.randomUUID();
+    const now = new Date().toISOString();
     const space = {
       id,
       type: payload.type,
@@ -735,7 +736,9 @@ export const api = {
       avatarUrl: payload.avatarUrl ?? null,
       description: payload.description?.trim() ?? "",
       commentsEnabled: payload.type === "channel" && Boolean(payload.commentsEnabled),
-      ownerId: payload.ownerId
+      ownerId: payload.ownerId,
+      createdAt: now,
+      updatedAt: now
     };
     const created = await supabase.from("Space").insert(space);
     if (created.error) throw new ApiRequestError(created.error.message, created.error.code);

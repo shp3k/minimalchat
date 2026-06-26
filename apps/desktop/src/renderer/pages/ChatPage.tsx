@@ -614,6 +614,9 @@ export function ChatPage({ user, language, theme, onUserUpdate, onLanguageChange
     }
 
     if (listMode === "contacts") {
+      if (!value) {
+        void loadUsers();
+      }
       return;
     }
 
